@@ -223,6 +223,12 @@ but it is only consulted for quarantined files, and a Homebrew *formula* leaves
 none behind. (A *cask* does, which is one reason this is not one, and why the
 same bundle handed over as a `.dmg` would be blocked.)
 
+A signature that macOS calls development still travels: the App Group only
+requires that the identifier's prefix match the Team ID that *signed* the
+bundle, which is a property of the signature and not of the Mac reading it. The
+widget registers on a machine that has never seen the certificate — confirmed on
+a second Mac, since the reasoning alone is not worth much here.
+
 **`vibewidget-refresh` is what remains.** Homebrew may not write to `$HOME`, and
 the widget gallery serves the extension from a LaunchServices record, so an
 upgraded `.appex` keeps running the old code until the app is re-registered.
@@ -230,10 +236,11 @@ The command copies the bundle to `~/Applications`, re-registers it, and starts
 it.
 
 Its `--sign` flag re-signs the installed copy with your own certificate and
-rewrites the group identifier to match, which is the repair if this Mac will not
-honour the signature the release shipped with — the widget would be missing from
-the gallery while the menu bar app still worked. That path is the one that needs
-Xcode and a free Apple ID.
+rewrites the group identifier to match. Nothing in the normal path needs it; it
+is there for a bundle built with `--unsigned`, and as the repair if a Mac ever
+does refuse the shipped signature — the widget would be missing from the gallery
+while the menu bar app still worked. That path is the one that needs Xcode and a
+free Apple ID.
 
 Distributing without any of this would need a **Developer ID** certificate and
 notarisation, both of which require the paid Apple Developer Program.
