@@ -1,0 +1,70 @@
+name: release
+
+# Homebrew never notices a new version on its own: the tap has to be told. A
+# tag publishes a tarball, then rewrites the formula to point at it — in this
+# repository and in ballunstar/homebrew-tap, which is what `brew` reads.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # Our own tarball rather than GitHub's generated one, whose checksum is
+      # not guaranteed to stay stable — and a changed checksum breaks installs.
+      - name: Pack the tagged source
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARBALL="vibe-widget-${VERSION}.tar.gz"
+          git archive --format=tar.gz --prefix="vibe-widget-${VERSION}/" \
+            -o "${TARBALL}" "${GITHUB_REF_NAME}"
+          {
+            echo "VERSION=${VERSION}"
+            echo "TARBALL=${TARBALL}"
+            echo "SHA256=$(shasum -a 256 "${TARBALL}" | cut -d' ' -f1)"
+          } >> "${GITHUB_ENV}"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" "${TARBALL}" --generate-notes
+
+      - name: Point the formula at it
+        run: |
+          set -euo pipefail
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${TARBALL}"
+          sed -i '' -e "s|^  url \".*\"|  url \"${URL}\"|" \
+                    -e "s|^  sha256 \".*\"|  sha256 \"${SHA256}\"|" Formula/vibewidget.rb
+          git diff --stat
+
+      - name: Record it on main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "vibewidget ${VERSION}" && git push origin main
+
+      - name: Hand it to the tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/ballunstar/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp Formula/vibewidget.rb tap/Formula/vibewidget.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/vibewidget.rb
+          git commit -m "vibewidget ${VERSION}" && git push

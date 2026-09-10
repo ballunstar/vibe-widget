@@ -1,0 +1,25 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Unsigned, because a runner has no Apple Development certificate — this
+      # only proves the sources still compile and the extension still embeds.
+      - run: ./build.sh --build-only --unsigned --no-icon
+
+      - name: The app must carry the widget extension
+        run: |
+          test -d build/Build/Products/Release/VibeWidget.app/Contents/PlugIns/VibeWidgetExtension.appex
+
+      - name: The entitlement templates must stay substitutable
+        run: |
+          grep -q '\$(APP_GROUP_IDENTIFIER)' App/VibeWidget.entitlements
+          grep -q '\$(APP_GROUP_IDENTIFIER)' Widget/VibeWidgetExtension.entitlements
