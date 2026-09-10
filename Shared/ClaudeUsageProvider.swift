@@ -6,20 +6,30 @@ enum ClaudeUsageProvider {
 
     /// The keychain item Claude Code writes its credentials into.
     private static let keychainService = "Claude Code-credentials"
+
+    /// Where Claude Code keeps the same JSON when it cannot use the keychain.
+    /// Same shape, so either source decodes into `CredentialBlob`.
+    private static var credentialsFile: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/.credentials.json")
+    }
     private static let usageEndpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
     enum ProviderError: LocalizedError {
-        case keychainUnavailable(OSStatus)
+        case notSignedIn
+        /// Carries what `security` printed. Anything other than a missing item
+        /// is rare enough that its own words beat a guess at what went wrong.
+        case keychainRefused(String)
         case credentialsUnreadable
         case tokenExpired
         case httpStatus(Int)
 
         var errorDescription: String? {
             switch self {
-            case .keychainUnavailable(let status) where status == errSecItemNotFound:
+            case .notSignedIn:
                 return "Not signed in to Claude Code"
-            case .keychainUnavailable:
-                return "Keychain access denied"
+            case .keychainRefused(let detail):
+                return detail.isEmpty ? "Keychain access denied" : "Keychain: \(detail)"
             case .credentialsUnreadable:
                 return "Could not read credentials"
             case .tokenExpired:
@@ -75,16 +85,41 @@ enum ClaudeUsageProvider {
         }
 
         let data = stdout.fileHandleForReading.readDataToEndOfFile()
-        _ = stderr.fileHandleForReading.readDataToEndOfFile()
+        let errorText = String(data: stderr.fileHandleForReading.readDataToEndOfFile(),
+                               encoding: .utf8) ?? ""
         process.waitUntilExit()
 
-        guard process.terminationStatus == 0 else {
-            throw ProviderError.keychainUnavailable(errSecItemNotFound)
+        if process.terminationStatus == 0 {
+            guard let blob = try? JSONDecoder().decode(CredentialBlob.self, from: data) else {
+                throw ProviderError.credentialsUnreadable
+            }
+            return blob.claudeAiOauth
         }
-        guard let blob = try? JSONDecoder().decode(CredentialBlob.self, from: data) else {
-            throw ProviderError.credentialsUnreadable
+
+        // Not every install keeps the token in the keychain, so a miss is not
+        // yet an answer — the file is the other place Claude Code writes it.
+        if let fileData = try? Data(contentsOf: credentialsFile) {
+            guard let blob = try? JSONDecoder().decode(CredentialBlob.self, from: fileData) else {
+                throw ProviderError.credentialsUnreadable
+            }
+            return blob.claudeAiOauth
         }
-        return blob.claudeAiOauth
+
+        // 44 is the only status that means "no such item"; everything else is
+        // the keychain saying no, and the reason matters.
+        if process.terminationStatus == 44 {
+            throw ProviderError.notSignedIn
+        }
+        throw ProviderError.keychainRefused(cleanUp(errorText))
+    }
+
+    /// `security: SecKeychainSearchCopyNext: <message>` — only the message is
+    /// worth putting in front of anyone.
+    private static func cleanUp(_ text: String) -> String {
+        text.split(separator: "\n").first.map {
+            $0.split(separator: ":").dropFirst(2).joined(separator: ":")
+              .trimmingCharacters(in: .whitespaces)
+        } ?? ""
     }
 
     // MARK: - API response

@@ -292,7 +292,7 @@ struct SettingsView: View {
     private func sourceDescription(_ provider: ProviderUsage.Provider) -> String {
         switch provider {
         case .claude:
-            return "api.anthropic.com/api/oauth/usage, authorised with the token Claude Code keeps in your keychain."
+            return "api.anthropic.com/api/oauth/usage, authorised with the token Claude Code keeps in your keychain — or in ~/.claude/.credentials.json when it cannot use the keychain."
         case .codex:
             return "~/.codex/sessions — the rate_limits snapshot the Codex CLI writes into its own session logs."
         }
