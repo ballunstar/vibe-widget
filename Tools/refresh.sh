@@ -45,7 +45,10 @@ echo "==> stopping the running app"
 pkill -x VibeWidget 2>/dev/null || true
 sleep 1
 
-echo "==> installing to $DEST"
+SOURCE_VERSION="$(plutil -extract CFBundleShortVersionString raw -o - \
+  "$SOURCE/Contents/Info.plist" 2>/dev/null || echo "?")"
+
+echo "==> installing $SOURCE_VERSION to $DEST"
 case "$DEST" in */VibeWidget.app) ;; *) echo "refusing to replace $DEST" >&2; exit 1 ;; esac
 mkdir -p "$DEST_DIR"
 rm -rf "$DEST"
@@ -118,3 +121,8 @@ sleep 3
 
 echo "==> widget extension registration:"
 pluginkit -mAvvv 2>/dev/null | grep -A1 -i vibe || echo "    NOT REGISTERED"
+
+# The version people actually see comes from this copy, not from the Cellar, so
+# saying it out loud is what makes a skipped refresh obvious.
+echo
+echo "VibeWidget $SOURCE_VERSION is installed and running."
