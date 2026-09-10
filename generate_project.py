@@ -77,9 +77,12 @@ def uid():
     return "AA%022X" % next(_ids)
 
 SHARED = ["UsageModels.swift", "ClaudeUsageProvider.swift", "CodexUsageProvider.swift",
-          "UsageStore.swift", "UsageViews.swift", "AppSettings.swift"]
-APP_SRC = ["VibeWidgetApp.swift", "DashboardView.swift", "SettingsView.swift"]
-WID_SRC = ["UsageWidget.swift"]
+          "UsageStore.swift", "UsageViews.swift", "AppSettings.swift",
+          "VibeWidgetURL.swift",
+          "SelectProviderIntent.swift"]
+APP_SRC = ["VibeWidgetApp.swift", "DashboardView.swift", "SettingsView.swift",
+           "MenuBarGauge.swift"]
+WID_SRC = ["UsageWidget.swift", "ProviderWidget.swift"]
 ASSETS = ["claude.png", "chatgpt.png"]
 APP_ASSETS = ["navicon.png"]
 

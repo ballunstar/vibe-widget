@@ -56,6 +56,13 @@ final class UsageViewModel: ObservableObject {
             .min { $0.1.remainingPercent < $1.1.remainingPercent }
     }
 
+    /// Percent remaining for one provider — its tightest window, i.e. the
+    /// number that will actually stop you. Nil until there is a reading.
+    func remaining(for provider: ProviderUsage.Provider) -> Double? {
+        guard snapshot.hasData else { return nil }
+        return lowestFor(provider)?.remainingPercent
+    }
+
     private func lowestFor(_ provider: ProviderUsage.Provider) -> UsageWindow? {
         let usage = provider == .claude ? snapshot.claude : snapshot.codex
         return [usage.session, usage.weekly].compactMap { $0 }
@@ -178,6 +185,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Appearance.apply(AppSettings.shared.appearance)
     }
+
+    /// Clicking a widget sends `vibewidget://dashboard` here. A menu bar app is
+    /// not frontmost at that point, so it has to raise itself as well.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.contains(where: VibeWidgetURL.isDashboard) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        DashboardOpenRequest.shared.pending = true
+    }
+}
+
+/// Bridges the delegate's URL callback to SwiftUI, which is the only side that
+/// can open a `Window` scene.
+@MainActor
+final class DashboardOpenRequest: ObservableObject {
+    static let shared = DashboardOpenRequest()
+    @Published var pending = false
+}
+
+/// The status item's label, and the app's only permanently-mounted view.
+///
+/// The menu's contents exist solely while the menu is open, so this is where a
+/// widget click has to be picked up — `openWindow` is a view environment value
+/// and needs somewhere alive to be read from.
+struct MenuBarLabel: View {
+    let icon: Image
+    let title: String
+    @ObservedObject private var request = DashboardOpenRequest.shared
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        icon
+        if !title.isEmpty {
+            Text(title)
+        }
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: request.pending) { _, pending in
+                guard pending else { return }
+                request.pending = false
+                openWindow(id: VibeWidgetApp.dashboardWindowID)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+    }
 }
 
 enum Appearance {
@@ -221,13 +271,14 @@ struct VibeWidgetApp: App {
     /// Marked as a template image, which is what lets one black-on-transparent
     /// asset serve both menu bar appearances: macOS re-colours templates to
     /// suit the bar it is drawing into, so no light/dark pair is needed.
+    /// The status item mark: a split donut, Claude's half on the left and
+    /// ChatGPT's on the right, each filled to what is left.
+    ///
+    /// Redrawn whenever the model publishes, which is what makes it track usage
+    /// — the App re-evaluates this label on every refresh.
     private var menuBarIcon: Image {
-        guard let image = NSImage(named: "navicon") else {
-            return Image(systemName: "gauge.with.needle")
-        }
-        image.isTemplate = true
-        image.size = NSSize(width: 15, height: 15)
-        return Image(nsImage: image)
+        Image(nsImage: MenuBarGauge.image(claude: model.remaining(for: .claude),
+                                          chatgpt: model.remaining(for: .codex)))
     }
 
     var body: some Scene {
@@ -236,10 +287,7 @@ struct VibeWidgetApp: App {
         MenuBarExtra(isInserted: $showInMenuBar) {
             MenuBarMenu(model: model)
         } label: {
-            menuBarIcon
-            if !menuBarTitle.isEmpty {
-                Text(menuBarTitle)
-            }
+            MenuBarLabel(icon: menuBarIcon, title: menuBarTitle)
         }
 
         Window("VibeWidget", id: Self.dashboardWindowID) {

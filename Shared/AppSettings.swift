@@ -18,6 +18,7 @@ final class AppSettings: ObservableObject {
             Key.menuBarDisplay: MenuBarDisplay.iconOnly.rawValue,
             Key.compactNumbers: false,
             Key.showResetTime: true,
+            Key.showWeekly: true,
             Key.notificationsEnabled: false,
             Key.warnThreshold: 20,
             Key.appearance: Appearance.system.rawValue,
@@ -31,6 +32,7 @@ final class AppSettings: ObservableObject {
         static let menuBarDisplay = "menuBarDisplay"
         static let compactNumbers = "compactNumbers"
         static let showResetTime = "showResetTime"
+        static let showWeekly = "showWeekly"
         static let notificationsEnabled = "notificationsEnabled"
         static let warnThreshold = "warnThreshold"
         static let appearance = "appearance"
@@ -120,6 +122,12 @@ final class AppSettings: ObservableObject {
         set { set(newValue, Key.showResetTime) }
     }
 
+    /// When off, only the 5-hour window is shown and it takes the full column.
+    var showWeekly: Bool {
+        get { defaults.bool(forKey: Key.showWeekly) }
+        set { set(newValue, Key.showWeekly) }
+    }
+
     var notificationsEnabled: Bool {
         get { defaults.bool(forKey: Key.notificationsEnabled) }
         set { set(newValue, Key.notificationsEnabled) }
@@ -143,6 +151,7 @@ final class AppSettings: ObservableObject {
     struct WidgetPreferences {
         let compactNumbers: Bool
         let showResetTime: Bool
+        let showWeekly: Bool
         let appearance: Appearance
 
         static var current: WidgetPreferences {
@@ -151,6 +160,7 @@ final class AppSettings: ObservableObject {
                 compactNumbers: d?.bool(forKey: Key.compactNumbers) ?? false,
                 // Absent means "never written", and the shipped default is on.
                 showResetTime: d?.object(forKey: Key.showResetTime) as? Bool ?? true,
+                showWeekly: d?.object(forKey: Key.showWeekly) as? Bool ?? true,
                 appearance: Appearance(rawValue: d?.string(forKey: Key.appearance) ?? "") ?? .system
             )
         }

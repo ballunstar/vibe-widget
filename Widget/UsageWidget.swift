@@ -77,13 +77,32 @@ struct UsageWidgetView: View {
     /// `\.widgetFamily` is read-only, so previews and snapshot tests cannot set
     /// it. This lets them ask for a specific layout directly.
     var familyOverride: WidgetFamily?
+    /// When set, only this provider is drawn. The layouts already size their
+    /// columns with `maxWidth: .infinity`, so a single provider simply takes
+    /// the whole widget — which is what the configurable single-provider
+    /// widget wants.
+    var only: ProviderUsage.Provider?
+    /// Per-widget answer to "show the weekly window?". nil defers to the
+    /// app-wide preference, which is what the non-configurable widget does.
+    var weeklyOverride: Bool?
+
+    /// One place decides, so the layouts and the derived figures cannot drift.
+    private var showWeekly: Bool { weeklyOverride ?? prefs.showWeekly }
+
+    private var visibleProviders: [ProviderUsage] {
+        guard let only else { return entry.snapshot.providers }
+        return entry.snapshot.providers.filter { $0.provider == only }
+    }
 
     private var family: WidgetFamily { familyOverride ?? environmentFamily }
     private var prefs: AppSettings.WidgetPreferences { .current }
 
     var body: some View {
         content
-            .padding(family == .systemLarge ? 8 : 16)
+            // The card layouts run to the edge, so their corners land exactly on
+            // the widget's own. Small has no card behind it, so its content
+            // still needs a margin of its own.
+            .padding(family == .systemSmall ? 16 : 0)
             .applyAppearance(prefs.appearance)
     }
 
@@ -123,7 +142,7 @@ struct UsageWidgetView: View {
     /// the one that will stop you first.
     private var small: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(entry.snapshot.providers, id: \.provider) { usage in
+            ForEach(visibleProviders, id: \.provider) { usage in
                 let window = tightest(usage)
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 5) {
@@ -157,12 +176,15 @@ struct UsageWidgetView: View {
     /// and bar together so the wide layout can be understood at a glance.
     private var medium: some View {
         HStack(alignment: .top, spacing: 10) {
-            ForEach(entry.snapshot.providers, id: \.provider) { usage in
+            ForEach(visibleProviders, id: \.provider) { usage in
                 mediumColumn(usage)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(10)
+                    .padding(15)
+                    // Concentric with the widget's own rounding rather than a
+                    // fixed radius: the system decides the outer curve, and
+                    // ContainerRelativeShape insets it by our margin.
                     .background(usage.provider.accent.opacity(0.075),
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                in: ContainerRelativeShape())
             }
         }
     }
@@ -186,7 +208,7 @@ struct UsageWidgetView: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 6) {
-                if let scoped = usage.modelScoped {
+                if showWeekly, let scoped = usage.modelScoped {
                     Text(usage.modelScopedName ?? "Model")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -237,13 +259,13 @@ struct UsageWidgetView: View {
     /// same height while Session and Weekly remain easy to compare side by side.
     private var large: some View {
         VStack(spacing: 10) {
-            ForEach(entry.snapshot.providers, id: \.provider) { usage in
+            ForEach(visibleProviders, id: \.provider) { usage in
                 largeSection(usage)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
                     .background(usage.provider.accent.opacity(0.075),
-                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                in: ContainerRelativeShape())
             }
         }
     }
@@ -281,7 +303,7 @@ struct UsageWidgetView: View {
 
             Spacer(minLength: 0)
 
-            if let scoped = usage.modelScoped {
+            if showWeekly, let scoped = usage.modelScoped {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(usage.modelScopedName ?? "Model")
@@ -322,21 +344,30 @@ struct UsageWidgetView: View {
 
     // MARK: Helpers
 
-    /// The two headline windows every provider has.
+    /// The headline windows to show. With the weekly window switched off the
+    /// session one is the only entry, and the layouts — which already lay these
+    /// out with `maxWidth: .infinity` — give it the whole column.
     private func mainWindows(_ usage: ProviderUsage) -> [(label: String, window: UsageWindow?)] {
-        [("Session", usage.session), ("Weekly", usage.weekly)]
+        showWeekly
+            ? [("Session", usage.session), ("Weekly", usage.weekly)]
+            : [("Session", usage.session)]
     }
 
+    /// Every window currently in play. Switching the weekly window off means
+    /// "I only care about the 5-hour one", so it drops out of the derived
+    /// figures too — otherwise the small widget and the reset line would keep
+    /// quoting a number the setting just hid.
+    private func activeWindows(_ usage: ProviderUsage) -> [UsageWindow] {
+        (showWeekly ? [usage.session, usage.weekly] : [usage.session]).compactMap { $0 }
+    }
 
     private func tightest(_ usage: ProviderUsage) -> UsageWindow? {
-        [usage.session, usage.weekly].compactMap { $0 }
-            .min { $0.remainingPercent < $1.remainingPercent }
+        activeWindows(usage).min { $0.remainingPercent < $1.remainingPercent }
     }
 
-    /// Whichever of the two windows rolls over soonest.
+    /// Whichever window in play rolls over soonest.
     private func nextReset(_ usage: ProviderUsage) -> UsageWindow? {
-        [usage.session, usage.weekly]
-            .compactMap { $0 }
+        activeWindows(usage)
             .filter { ($0.resetsAt ?? .distantPast) > Date() }
             .min { ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture) }
     }
@@ -347,6 +378,7 @@ struct UsageWidget: Widget {
         StaticConfiguration(kind: "VibeUsageWidget", provider: UsageTimelineProvider()) { entry in
             UsageWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
+                .widgetURL(VibeWidgetURL.dashboard)
         }
         .configurationDisplayName("AI Usage")
         .description("How much Claude and ChatGPT usage you have left.")
@@ -357,5 +389,8 @@ struct UsageWidget: Widget {
 
 @main
 struct VibeWidgetBundle: WidgetBundle {
-    var body: some Widget { UsageWidget() }
+    var body: some Widget {
+        UsageWidget()
+        ProviderWidget()
+    }
 }

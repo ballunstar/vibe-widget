@@ -224,6 +224,16 @@ struct SettingsView: View {
             }
 
             SettingsSection(title: "Widgets") {
+                SettingRow(title: "Show weekly usage",
+                           subtitle: "Off shows only the 5-hour window, across the full column. Per-model weekly limits hide with it.") {
+                    Toggle("", isOn: Binding(
+                        get: { settings.showWeekly },
+                        set: { settings.showWeekly = $0; WidgetCenter.shared.reloadAllTimelines() }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                }
+                Divider().padding(.horizontal, 16)
                 SettingRow(title: "Use compact numbers",
                            subtitle: "Show smaller, cleaner numbers in widgets.") {
                     Toggle("", isOn: Binding(
