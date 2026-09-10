@@ -21,7 +21,12 @@ enum ClaudeUsageProvider {
         /// is rare enough that its own words beat a guess at what went wrong.
         case keychainRefused(String)
         case credentialsUnreadable
-        case tokenExpired
+        /// The stored token has lapsed. Only Claude Code renews it, and only
+        /// when it runs, so this says nothing about the account.
+        case tokenStale
+        /// Anthropic refused a token that had not lapsed yet — a different
+        /// problem, and one running `claude` will not fix.
+        case unauthorized
         case httpStatus(Int)
 
         var errorDescription: String? {
@@ -32,8 +37,10 @@ enum ClaudeUsageProvider {
                 return detail.isEmpty ? "Keychain access denied" : "Keychain: \(detail)"
             case .credentialsUnreadable:
                 return "Could not read credentials"
-            case .tokenExpired:
-                return "Token expired — open Claude Code"
+            case .tokenStale:
+                return "Token expired — run claude once to renew it"
+            case .unauthorized:
+                return "Anthropic rejected the token (401)"
             case .httpStatus(let code):
                 return "Anthropic API error (\(code))"
             }
@@ -178,11 +185,12 @@ enum ClaudeUsageProvider {
             let creds = try loadCredentials()
             result.plan = creds.subscriptionType
 
-            // Claude Code refreshes this token in the background. If it has
-            // lapsed we say so rather than firing a request we know will 401.
+            // Only Claude Code renews this, and only while it runs — a few
+            // hours after its last use the token is dead. Saying so beats
+            // firing a request we already know will come back 401.
             if let expiresAt = creds.expiresAt,
                Date(timeIntervalSince1970: expiresAt / 1000) < Date() {
-                throw ProviderError.tokenExpired
+                throw ProviderError.tokenStale
             }
 
             var request = URLRequest(url: usageEndpoint)
@@ -193,7 +201,7 @@ enum ClaudeUsageProvider {
             let (data, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard code == 200 else {
-                throw code == 401 ? ProviderError.tokenExpired : ProviderError.httpStatus(code)
+                throw code == 401 ? ProviderError.unauthorized : ProviderError.httpStatus(code)
             }
 
             let decoded = try JSONDecoder().decode(UsageResponse.self, from: data)

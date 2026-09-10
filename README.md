@@ -117,6 +117,17 @@ replaying a stale number.
 endpoint `/usage` uses. This is an internal endpoint and may change without
 notice — if it does, only `ClaudeUsageProvider` needs updating.
 
+That call needs Claude Code's OAuth token, which lives a few hours and is
+renewed by Claude Code itself — only while it runs. So Claude's numbers stop a
+few hours after you last used the CLI, and the status reads *"Token expired —
+run claude once to renew it"*. Running any `claude` command renews it.
+
+Renewing it here instead would mean spending the refresh token, and OAuth
+servers commonly rotate that on use: the copy Claude Code holds would stop
+working and the CLI would find itself signed out. Reading is the only safe
+thing to do with someone else's credentials, so the app reads. Codex has no
+such limit — its numbers come from files, not from a token.
+
 ## Three constraints that shaped the design
 
 **1. The Claude keychain item trusts exactly one binary.** Claude Code writes
