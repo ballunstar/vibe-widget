@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Unsigned, because a runner has no Apple Development certificate — this
       # only proves the sources still compile and the extension still embeds.
