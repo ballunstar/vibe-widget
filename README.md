@@ -86,19 +86,20 @@ alert until the window actually rolls over.
 
 ## Where the numbers come from
 
-Claude also reports a **per-model weekly allowance**, which the medium and large
-widgets show as a third column when it is present. It does not arrive as a named
-field — it is an entry in the `limits` array with `kind: "weekly_scoped"` and the
-model in `scope.model.display_name`:
+Claude also reports a **per-model weekly allowance**. It does not arrive as a
+named field — it is an entry in the `limits` array with `kind: "weekly_scoped"`
+and the model in `scope.model.display_name`:
 
 ```json
 { "kind": "weekly_scoped", "group": "weekly", "percent": 0,
   "scope": { "model": { "display_name": "Fable" } } }
 ```
 
-That name is read from the response rather than hard-coded, so if the scoped
-model changes the column relabels itself with no code change. ChatGPT reports no
-equivalent, so its layout stays at two columns.
+The medium and large widgets give it its own row beneath the session bar rather
+than a third column, so the two headline numbers keep their full size. That name
+is read from the response rather than hard-coded, so if the scoped model changes
+the row relabels itself with no code change. The row renders nothing when the
+provider reports no scoped window, which is why ChatGPT's layout is unchanged.
 
 |         | 5-hour window | Weekly window | Source |
 |---------|---------------|---------------|--------|

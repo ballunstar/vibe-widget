@@ -177,23 +177,18 @@ struct UsageWidgetView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
-            let columns = windows(usage)
-            HStack(alignment: .top, spacing: columns.count > 2 ? 8 : 14) {
-                ForEach(columns, id: \.label) { column in
+            HStack(alignment: .top, spacing: 14) {
+                ForEach(mainWindows(usage), id: \.label) { column in
                     VStack(spacing: 0) {
                         Text(percentText(column.window, compact: prefs.compactNumbers))
-                            // A third column has to fit in the same half-width.
-                            .font(.system(size: columns.count > 2 ? 23 : 30,
-                                          weight: .heavy, design: .rounded))
+                            .font(.system(size: 30, weight: .heavy, design: .rounded))
                             .monospacedDigit()
-                            .minimumScaleFactor(0.5)
+                            .minimumScaleFactor(0.6)
                             .lineLimit(1)
                             .foregroundStyle(usage.provider.accent)
                         Text(column.label)
-                            .font(.system(size: columns.count > 2 ? 9 : 11))
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
                     }
                 }
             }
@@ -201,6 +196,9 @@ struct UsageWidgetView: View {
             SegmentedBar(remaining: usage.session?.remainingPercent ?? 0,
                          tint: usage.provider.accent, segments: 1)
                 .frame(height: 8)
+                .padding(.horizontal, 4)
+
+            scopedRow(usage, labelSize: 9, valueSize: 11, barHeight: 6, segments: 1)
                 .padding(.horizontal, 4)
 
             if prefs.showResetTime, let label = ResetLabel.text(for: nextReset(usage)) {
@@ -256,18 +254,18 @@ struct UsageWidgetView: View {
                 }
             }
 
-            let columns = windows(usage)
-            HStack(alignment: .top, spacing: columns.count > 2 ? 10 : 14) {
-                ForEach(columns, id: \.label) { column in
+            HStack(alignment: .top, spacing: 14) {
+                ForEach(mainWindows(usage), id: \.label) { column in
                     largeWindow("\(column.label) Remaining", column.window,
-                                usage.provider.accent, compact: columns.count > 2)
+                                usage.provider.accent)
                 }
             }
+
+            scopedRow(usage, labelSize: 11, valueSize: 14, barHeight: 8, segments: 9)
         }
     }
 
-    private func largeWindow(_ title: String, _ window: UsageWindow?, _ tint: Color,
-                             compact: Bool = false) -> some View {
+    private func largeWindow(_ title: String, _ window: UsageWindow?, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 11))
@@ -275,13 +273,12 @@ struct UsageWidgetView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Text(percentText(window, compact: prefs.compactNumbers))
-                .font(.system(size: compact ? 26 : 34, weight: .heavy, design: .rounded))
+                .font(.system(size: 34, weight: .heavy, design: .rounded))
                 .monospacedDigit()
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
                 .foregroundStyle(tint)
-            SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: tint,
-                         segments: compact ? 5 : 7)
+            SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: tint, segments: 7)
                 .frame(height: 8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,18 +286,35 @@ struct UsageWidgetView: View {
 
     // MARK: Helpers
 
-    /// The windows to draw for a provider, in order. The model-scoped one only
-    /// appears when the provider reports it — ChatGPT has no equivalent, so its
-    /// layout is unaffected.
-    private func windows(_ usage: ProviderUsage) -> [(label: String, window: UsageWindow?)] {
-        var list: [(String, UsageWindow?)] = [
-            ("Session", usage.session),
-            ("Weekly", usage.weekly),
-        ]
-        if usage.modelScoped != nil {
-            list.append((usage.modelScopedName ?? "Model", usage.modelScoped))
+    /// The two headline windows every provider has.
+    private func mainWindows(_ usage: ProviderUsage) -> [(label: String, window: UsageWindow?)] {
+        [("Session", usage.session), ("Weekly", usage.weekly)]
+    }
+
+    /// The per-model weekly allowance, on its own line beneath the bars rather
+    /// than as a third column — it is a secondary limit and squeezing it in
+    /// alongside would shrink the two numbers that matter most.
+    ///
+    /// Renders nothing when the provider reports no scoped window, which is why
+    /// ChatGPT's layout is unchanged.
+    @ViewBuilder
+    private func scopedRow(_ usage: ProviderUsage, labelSize: CGFloat, valueSize: CGFloat,
+                           barHeight: CGFloat, segments: Int) -> some View {
+        if let scoped = usage.modelScoped {
+            HStack(spacing: 6) {
+                Text(usage.modelScopedName ?? "Model")
+                    .font(.system(size: labelSize, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(percentText(scoped, compact: prefs.compactNumbers))
+                    .font(.system(size: valueSize, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(usage.provider.accent)
+                SegmentedBar(remaining: scoped.remainingPercent,
+                             tint: usage.provider.accent, segments: segments)
+                    .frame(height: barHeight)
+            }
         }
-        return list
     }
 
     private func tightest(_ usage: ProviderUsage) -> UsageWindow? {
