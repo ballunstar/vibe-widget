@@ -1,8 +1,8 @@
 class Vibewidget < Formula
   desc "Menu bar app and widget showing how much Claude and Codex usage is left"
   homepage "https://github.com/ballunstar/vibe-widget"
-  url "https://github.com/ballunstar/vibe-widget/releases/download/v1.0.0/vibe-widget-1.0.0.tar.gz"
-  sha256 "1279cb2eb2f2023265624c900e1149d9d0d789f222cab9fae1f97573d9070d51"
+  url "https://github.com/ballunstar/vibe-widget/releases/download/v1.0.1/vibe-widget-1.0.1.tar.gz"
+  sha256 "10d55d45f24dea95c8ee5669dab2cfe0c1d7921a07dc8af893bc1ed1c14a68f9"
   license "MIT"
   head "https://github.com/ballunstar/vibe-widget.git", branch: "main"
 
