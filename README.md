@@ -16,9 +16,9 @@ brew install ballunstar/tap/vibewidget
 vibewidget-refresh
 ```
 
-Recent Homebrew withholds third-party taps until you say so; if it answers
-*"Refusing to load formula … from untrusted tap"*, run `brew trust
-ballunstar/tap` and try again.
+No `brew tap` step: naming the formula in full is what tells recent Homebrew
+you trust it. Tapping the whole tap first is what gets refused, and `brew trust
+ballunstar/tap` is the answer to that.
 
 Or from a clone: `./build.sh`.
 
