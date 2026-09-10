@@ -16,6 +16,10 @@ brew install ballunstar/tap/vibewidget
 vibewidget-refresh
 ```
 
+Recent Homebrew withholds third-party taps until you say so; if it answers
+*"Refusing to load formula … from untrusted tap"*, run `brew trust
+ballunstar/tap` and try again.
+
 Or from a clone: `./build.sh`.
 
 Both need **Xcode** (not just the Command Line Tools — an app extension will
