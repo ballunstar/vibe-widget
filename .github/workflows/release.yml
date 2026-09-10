@@ -47,12 +47,19 @@ jobs:
                     -e "s|^  sha256 \".*\"|  sha256 \"${SHA256}\"|" Formula/vibewidget.rb
           git diff --stat
 
+      # A re-tagged release can leave the formula already correct, and an empty
+      # `git commit` fails — which would fail the whole run for no reason.
       - name: Record it on main
         run: |
           set -euo pipefail
+          if git diff --quiet; then
+            echo "formula already points at ${VERSION}"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "vibewidget ${VERSION}" && git push origin main
+          git commit -am "vibewidget ${VERSION}"
+          git push origin main
 
       - name: Hand it to the tap
         env:
@@ -64,7 +71,12 @@ jobs:
           mkdir -p tap/Formula
           cp Formula/vibewidget.rb tap/Formula/vibewidget.rb
           cd tap
+          git add Formula/vibewidget.rb
+          if git diff --cached --quiet; then
+            echo "tap already serves ${VERSION}"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/vibewidget.rb
-          git commit -m "vibewidget ${VERSION}" && git push
+          git commit -m "vibewidget ${VERSION}"
+          git push

@@ -15,7 +15,7 @@ final class AppSettings: ObservableObject {
             Key.automaticRefresh: true,
             Key.refreshIntervalMinutes: 15,
             Key.showInMenuBar: true,
-            Key.menuBarDisplay: MenuBarDisplay.lowestRemaining.rawValue,
+            Key.menuBarDisplay: MenuBarDisplay.iconOnly.rawValue,
             Key.compactNumbers: false,
             Key.showResetTime: true,
             Key.notificationsEnabled: false,

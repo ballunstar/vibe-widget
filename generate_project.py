@@ -81,6 +81,7 @@ SHARED = ["UsageModels.swift", "ClaudeUsageProvider.swift", "CodexUsageProvider.
 APP_SRC = ["VibeWidgetApp.swift", "DashboardView.swift", "SettingsView.swift"]
 WID_SRC = ["UsageWidget.swift"]
 ASSETS = ["claude.png", "chatgpt.png"]
+APP_ASSETS = ["navicon.png"]
 
 # --- file references -------------------------------------------------------
 refs = {}   # path -> (id, name, filetype, sourcetree)
@@ -97,7 +98,7 @@ fref("Widget/Info.plist", "text.plist.xml")
 fref("App/AppIcon.icns", "image.icns")
 # Provider logos. Both targets need their own copy: the widget extension is a
 # separate bundle and cannot reach the app's resources.
-for f in ASSETS: fref("Assets/" + f, "image.png")
+for f in ASSETS + APP_ASSETS: fref("Assets/" + f, "image.png")
 
 APP_PROD = uid(); WID_PROD = uid()
 
@@ -108,7 +109,8 @@ def bf(path):
 
 app_sources = [bf("Shared/" + f) for f in SHARED] + [bf("App/" + f) for f in APP_SRC]
 wid_sources = [bf("Shared/" + f) for f in SHARED] + [bf("Widget/" + f) for f in WID_SRC]
-app_resources = [bf("App/AppIcon.icns")] + [bf("Assets/" + f) for f in ASSETS]
+app_resources = ([bf("App/AppIcon.icns")]
+                 + [bf("Assets/" + f) for f in ASSETS + APP_ASSETS])
 wid_resources = [bf("Assets/" + f) for f in ASSETS]
 
 EMBED_BF = uid()   # widget product embedded into the app
@@ -167,7 +169,7 @@ group(G_APP, "App", [(refs["App/" + f][0], f) for f in APP_SRC]
                     + [(refs["App/Info.plist"][0], "Info.plist"),
                        (refs["App/AppIcon.icns"][0], "AppIcon.icns")], path="App")
 group(G_WID, "Widget", [(refs["Widget/" + f][0], f) for f in WID_SRC] + [(refs["Widget/Info.plist"][0], "Info.plist")], path="Widget")
-group(G_ASSETS, "Assets", [(refs["Assets/" + f][0], f) for f in ASSETS], path="Assets")
+group(G_ASSETS, "Assets", [(refs["Assets/" + f][0], f) for f in ASSETS + APP_ASSETS], path="Assets")
 group(PROD_GROUP, "Products", [(APP_PROD, "VibeWidget.app"), (WID_PROD, "VibeWidgetExtension.appex")])
 w("/* End PBXGroup section */\n")
 

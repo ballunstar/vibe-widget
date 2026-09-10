@@ -209,27 +209,35 @@ struct VibeWidgetApp: App {
     private var showInMenuBar = true
 
     @AppStorage("menuBarDisplay", store: UserDefaults(suiteName: UsageStore.appGroupIdentifier))
-    private var menuBarDisplayRaw = AppSettings.MenuBarDisplay.lowestRemaining.rawValue
+    private var menuBarDisplayRaw = AppSettings.MenuBarDisplay.iconOnly.rawValue
 
     private var menuBarTitle: String {
         let display = AppSettings.MenuBarDisplay(rawValue: menuBarDisplayRaw) ?? .lowestRemaining
         return model.menuBarTitle(for: display)
     }
 
+    /// The status item mark.
+    ///
+    /// Marked as a template image, which is what lets one black-on-transparent
+    /// asset serve both menu bar appearances: macOS re-colours templates to
+    /// suit the bar it is drawing into, so no light/dark pair is needed.
+    private var menuBarIcon: Image {
+        guard let image = NSImage(named: "navicon") else {
+            return Image(systemName: "gauge.with.needle")
+        }
+        image.isTemplate = true
+        image.size = NSSize(width: 15, height: 15)
+        return Image(nsImage: image)
+    }
+
     var body: some Scene {
         // Clicking the menu bar item opens a menu; the numbers live in the
         // dashboard window rather than in a popover.
-        //
-        // The label must be Text, Image, or Label — a stacked layout silently
-        // renders nothing.
         MenuBarExtra(isInserted: $showInMenuBar) {
             MenuBarMenu(model: model)
         } label: {
-            // Label collapses to icon-only in the menu bar, so the percentage
-            // is drawn as Text and only the icon-only mode uses an Image.
-            if menuBarTitle.isEmpty {
-                Image(systemName: "gauge.with.needle")
-            } else {
+            menuBarIcon
+            if !menuBarTitle.isEmpty {
                 Text(menuBarTitle)
             }
         }

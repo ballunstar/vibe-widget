@@ -122,6 +122,8 @@ enum UsageStore {
         var merged = fresh
         merged.session = merged.session ?? cached.session
         merged.weekly = merged.weekly ?? cached.weekly
+        merged.modelScoped = merged.modelScoped ?? cached.modelScoped
+        merged.modelScopedName = merged.modelScopedName ?? cached.modelScopedName
         merged.plan = merged.plan ?? cached.plan
         return merged
     }

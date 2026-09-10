@@ -177,19 +177,23 @@ struct UsageWidgetView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
-            HStack(alignment: .top, spacing: 14) {
-                ForEach(["Session", "Weekly"], id: \.self) { name in
-                    let window = name == "Session" ? usage.session : usage.weekly
+            let columns = windows(usage)
+            HStack(alignment: .top, spacing: columns.count > 2 ? 8 : 14) {
+                ForEach(columns, id: \.label) { column in
                     VStack(spacing: 0) {
-                        Text(percentText(window, compact: prefs.compactNumbers))
-                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        Text(percentText(column.window, compact: prefs.compactNumbers))
+                            // A third column has to fit in the same half-width.
+                            .font(.system(size: columns.count > 2 ? 23 : 30,
+                                          weight: .heavy, design: .rounded))
                             .monospacedDigit()
-                            .minimumScaleFactor(0.6)
+                            .minimumScaleFactor(0.5)
                             .lineLimit(1)
                             .foregroundStyle(usage.provider.accent)
-                        Text(name)
-                            .font(.system(size: 11))
+                        Text(column.label)
+                            .font(.system(size: columns.count > 2 ? 9 : 11))
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                 }
             }
@@ -252,14 +256,18 @@ struct UsageWidgetView: View {
                 }
             }
 
-            HStack(alignment: .top, spacing: 14) {
-                largeWindow("Session Remaining", usage.session, usage.provider.accent)
-                largeWindow("Weekly Remaining", usage.weekly, usage.provider.accent)
+            let columns = windows(usage)
+            HStack(alignment: .top, spacing: columns.count > 2 ? 10 : 14) {
+                ForEach(columns, id: \.label) { column in
+                    largeWindow("\(column.label) Remaining", column.window,
+                                usage.provider.accent, compact: columns.count > 2)
+                }
             }
         }
     }
 
-    private func largeWindow(_ title: String, _ window: UsageWindow?, _ tint: Color) -> some View {
+    private func largeWindow(_ title: String, _ window: UsageWindow?, _ tint: Color,
+                             compact: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 11))
@@ -267,18 +275,33 @@ struct UsageWidgetView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Text(percentText(window, compact: prefs.compactNumbers))
-                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .font(.system(size: compact ? 26 : 34, weight: .heavy, design: .rounded))
                 .monospacedDigit()
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
                 .foregroundStyle(tint)
-            SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: tint, segments: 7)
+            SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: tint,
+                         segments: compact ? 5 : 7)
                 .frame(height: 8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Helpers
+
+    /// The windows to draw for a provider, in order. The model-scoped one only
+    /// appears when the provider reports it — ChatGPT has no equivalent, so its
+    /// layout is unaffected.
+    private func windows(_ usage: ProviderUsage) -> [(label: String, window: UsageWindow?)] {
+        var list: [(String, UsageWindow?)] = [
+            ("Session", usage.session),
+            ("Weekly", usage.weekly),
+        ]
+        if usage.modelScoped != nil {
+            list.append((usage.modelScopedName ?? "Model", usage.modelScoped))
+        }
+        return list
+    }
 
     private func tightest(_ usage: ProviderUsage) -> UsageWindow? {
         [usage.session, usage.weekly].compactMap { $0 }

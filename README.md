@@ -82,6 +82,20 @@ alert until the window actually rolls over.
 
 ## Where the numbers come from
 
+Claude also reports a **per-model weekly allowance**, which the medium and large
+widgets show as a third column when it is present. It does not arrive as a named
+field — it is an entry in the `limits` array with `kind: "weekly_scoped"` and the
+model in `scope.model.display_name`:
+
+```json
+{ "kind": "weekly_scoped", "group": "weekly", "percent": 0,
+  "scope": { "model": { "display_name": "Fable" } } }
+```
+
+That name is read from the response rather than hard-coded, so if the scoped
+model changes the column relabels itself with no code change. ChatGPT reports no
+equivalent, so its layout stays at two columns.
+
 |         | 5-hour window | Weekly window | Source |
 |---------|---------------|---------------|--------|
 | Claude  | `five_hour.utilization` | `seven_day.utilization` | `api.anthropic.com/api/oauth/usage` |
@@ -155,6 +169,11 @@ Provider logos live in `Assets/` and are built into **both** targets — a widge
 extension is its own bundle and cannot reach the app's resources. They load via
 `NSImage(named:)` rather than `Image("name")`, since the SwiftUI initialiser
 resolves against an asset catalog and these ship as loose PNGs.
+
+`Assets/navicon.png` is the menu bar mark, app target only. It is black on
+transparent and flagged `isTemplate`, so macOS re-colours it to suit whichever
+menu bar it is drawn into — one asset covers both light and dark, and a
+separate white version would be redundant.
 
 ## App icon
 

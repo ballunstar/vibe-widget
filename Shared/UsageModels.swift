@@ -17,6 +17,12 @@ struct ProviderUsage: Codable, Hashable {
     var session: UsageWindow?
     /// The long rolling window: 7 days for both.
     var weekly: UsageWindow?
+    /// A weekly allowance scoped to one model, which Claude reports separately
+    /// on some plans. Nil when the provider does not offer one.
+    var modelScoped: UsageWindow?
+    /// What that scoped window covers, e.g. "Fable". Read from the API rather
+    /// than hard-coded, so a change of model does not need a new build.
+    var modelScopedName: String?
     /// Plan name as the provider reports it ("max", "plus", ...). Display only.
     var plan: String?
     /// Set when we could not refresh; the windows above may still hold stale data.
@@ -58,6 +64,10 @@ struct UsageSnapshot: Codable, Hashable {
                 provider: .claude,
                 session: UsageWindow(usedPercent: 12, resetsAt: nil),
                 weekly: UsageWindow(usedPercent: 34, resetsAt: nil),
+                // Included so the gallery preview shows the same column count
+                // the real widget will draw.
+                modelScoped: UsageWindow(usedPercent: 20, resetsAt: nil),
+                modelScopedName: "Fable",
                 plan: "max"
             ),
             codex: ProviderUsage(

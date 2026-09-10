@@ -98,6 +98,21 @@ enum ClaudeUsageProvider {
         }
         let five_hour: Window?
         let seven_day: Window?
+
+        /// Per-model allowances arrive here rather than as named top-level
+        /// fields, with the model in `scope`. Parsed generically so a change of
+        /// model needs no code change.
+        struct Limit: Decodable {
+            struct Scope: Decodable {
+                struct Model: Decodable { let display_name: String? }
+                let model: Model?
+            }
+            let kind: String?
+            let percent: Double?
+            let resets_at: String?
+            let scope: Scope?
+        }
+        let limits: [Limit]?
     }
 
     private static let isoParser: ISO8601DateFormatter = {
@@ -149,6 +164,14 @@ enum ClaudeUsageProvider {
             let decoded = try JSONDecoder().decode(UsageResponse.self, from: data)
             result.session = window(from: decoded.five_hour)
             result.weekly = window(from: decoded.seven_day)
+
+            if let scoped = decoded.limits?.first(where: {
+                $0.kind == "weekly_scoped" && $0.scope?.model?.display_name != nil
+            }), let used = scoped.percent {
+                result.modelScoped = UsageWindow(usedPercent: used,
+                                                 resetsAt: parseDate(scoped.resets_at))
+                result.modelScopedName = scoped.scope?.model?.display_name
+            }
         } catch {
             result.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
