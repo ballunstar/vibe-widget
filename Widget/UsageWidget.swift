@@ -83,6 +83,7 @@ struct UsageWidgetView: View {
 
     var body: some View {
         content
+            .padding(family == .systemLarge ? 8 : 16)
             .applyAppearance(prefs.appearance)
     }
 
@@ -152,134 +153,169 @@ struct UsageWidgetView: View {
 
     // MARK: Medium (wide)
 
-    /// Two columns side by side, which is the shape a 2:1 widget wants.
+    /// Two compact provider surfaces. Each allowance keeps its label, value,
+    /// and bar together so the wide layout can be understood at a glance.
     private var medium: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(entry.snapshot.providers.enumerated()), id: \.element.provider) { index, usage in
+        HStack(alignment: .top, spacing: 10) {
+            ForEach(entry.snapshot.providers, id: \.provider) { usage in
                 mediumColumn(usage)
-                    .frame(maxWidth: .infinity)
-                if index == 0 {
-                    Divider().padding(.vertical, 4)
-                }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(10)
+                    .background(usage.provider.accent.opacity(0.075),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
     }
 
     private func mediumColumn(_ usage: ProviderUsage) -> some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 7) {
-                ProviderLogo(provider: usage.provider, size: 26)
+                ProviderLogo(provider: usage.provider, size: 21)
                 Text(usage.provider.displayName)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
 
-            Text("Remaining")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
                 ForEach(mainWindows(usage), id: \.label) { column in
-                    VStack(spacing: 0) {
-                        Text(percentText(column.window, compact: prefs.compactNumbers))
-                            .font(.system(size: 30, weight: .heavy, design: .rounded))
-                            .monospacedDigit()
-                            .minimumScaleFactor(0.6)
-                            .lineLimit(1)
-                            .foregroundStyle(usage.provider.accent)
-                        Text(column.label)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                    mediumWindow(column.label, column.window, usage.provider.accent)
                 }
             }
 
-            SegmentedBar(remaining: usage.session?.remainingPercent ?? 0,
-                         tint: usage.provider.accent, segments: 1)
-                .frame(height: 8)
-                .padding(.horizontal, 4)
+            Spacer(minLength: 0)
 
-            scopedRow(usage, labelSize: 9, valueSize: 11, barHeight: 6, segments: 1)
-                .padding(.horizontal, 4)
+            HStack(spacing: 6) {
+                if let scoped = usage.modelScoped {
+                    Text(usage.modelScopedName ?? "Model")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text(percentText(scoped, compact: prefs.compactNumbers))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(usage.provider.accent)
+                }
 
-            if prefs.showResetTime, let label = ResetLabel.text(for: nextReset(usage)) {
-                Text(label)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Spacer(minLength: 0)
+
+                if prefs.showResetTime, let parts = ResetLabel.parts(for: nextReset(usage)) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text(parts.value)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
-        .padding(.horizontal, 8)
+    }
+
+    private func mediumWindow(_ title: String, _ window: UsageWindow?, _ tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(percentText(window, compact: prefs.compactNumbers))
+                .font(.system(size: 25, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .minimumScaleFactor(0.65)
+                .lineLimit(1)
+                .foregroundStyle(tint)
+            SegmentedBar(remaining: window?.remainingPercent ?? 0,
+                         tint: tint, segments: 5)
+                .frame(height: 6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Large (tall)
 
-    /// A large widget is roughly square, so the providers stack and each one
-    /// gets room for both windows spelled out.
+    /// Providers stack vertically in the square family. Each section gets the
+    /// same height while Session and Weekly remain easy to compare side by side.
     private var large: some View {
-        // Spacers rather than fixed padding, so the two halves stay balanced
-        // whatever height the family actually gets.
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            largeSection(entry.snapshot.claude)
-            Spacer(minLength: 0)
-            Divider()
-            Spacer(minLength: 0)
-            largeSection(entry.snapshot.codex)
-            Spacer(minLength: 0)
+        VStack(spacing: 10) {
+            ForEach(entry.snapshot.providers, id: \.provider) { usage in
+                largeSection(usage)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+                    .background(usage.provider.accent.opacity(0.075),
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
         }
     }
 
     private func largeSection(_ usage: ProviderUsage) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .center, spacing: 8) {
-                ProviderLogo(provider: usage.provider, size: 24)
+                ProviderLogo(provider: usage.provider, size: 22)
                 Text(usage.provider.displayName)
-                    .font(.system(size: 21, weight: .bold))
-                Spacer(minLength: 4)
+                    .font(.system(size: 16, weight: .bold))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
 
                 if prefs.showResetTime, let parts = ResetLabel.parts(for: nextReset(usage)) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "clock")
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .trailing, spacing: -1) {
-                            Text(parts.caption)
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                            Text(parts.value)
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(usage.provider.accent)
-                        }
+                            .font(.system(size: 9, weight: .medium))
+                        Text(parts.caption)
+                            .font(.system(size: 8))
+                        Text(parts.value)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(usage.provider.accent)
                     }
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 }
             }
 
             HStack(alignment: .top, spacing: 14) {
                 ForEach(mainWindows(usage), id: \.label) { column in
-                    largeWindow("\(column.label) Remaining", column.window,
-                                usage.provider.accent)
+                    largeWindow(column.label, column.window, usage.provider.accent)
                 }
             }
 
-            scopedRow(usage, labelSize: 11, valueSize: 14, barHeight: 8, segments: 9)
+            Spacer(minLength: 0)
+
+            if let scoped = usage.modelScoped {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(usage.modelScopedName ?? "Model")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Text(percentText(scoped, compact: prefs.compactNumbers))
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(usage.provider.accent)
+                        Spacer(minLength: 0)
+                    }
+                    SegmentedBar(remaining: scoped.remainingPercent,
+                                 tint: usage.provider.accent, segments: 7)
+                        .frame(height: 7)
+                }
+            }
         }
     }
 
     private func largeWindow(_ title: String, _ window: UsageWindow?, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.system(size: 11))
+                .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
             Text(percentText(window, compact: prefs.compactNumbers))
-                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .font(.system(size: 26, weight: .heavy, design: .rounded))
                 .monospacedDigit()
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.65)
                 .lineLimit(1)
                 .foregroundStyle(tint)
             SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: tint, segments: 7)
-                .frame(height: 8)
+                .frame(height: 7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -291,31 +327,6 @@ struct UsageWidgetView: View {
         [("Session", usage.session), ("Weekly", usage.weekly)]
     }
 
-    /// The per-model weekly allowance, on its own line beneath the bars rather
-    /// than as a third column — it is a secondary limit and squeezing it in
-    /// alongside would shrink the two numbers that matter most.
-    ///
-    /// Renders nothing when the provider reports no scoped window, which is why
-    /// ChatGPT's layout is unchanged.
-    @ViewBuilder
-    private func scopedRow(_ usage: ProviderUsage, labelSize: CGFloat, valueSize: CGFloat,
-                           barHeight: CGFloat, segments: Int) -> some View {
-        if let scoped = usage.modelScoped {
-            HStack(spacing: 6) {
-                Text(usage.modelScopedName ?? "Model")
-                    .font(.system(size: labelSize, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Text(percentText(scoped, compact: prefs.compactNumbers))
-                    .font(.system(size: valueSize, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(usage.provider.accent)
-                SegmentedBar(remaining: scoped.remainingPercent,
-                             tint: usage.provider.accent, segments: segments)
-                    .frame(height: barHeight)
-            }
-        }
-    }
 
     private func tightest(_ usage: ProviderUsage) -> UsageWindow? {
         [usage.session, usage.weekly].compactMap { $0 }
@@ -340,6 +351,7 @@ struct UsageWidget: Widget {
         .configurationDisplayName("AI Usage")
         .description("How much Claude and ChatGPT usage you have left.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 

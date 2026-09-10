@@ -16,19 +16,19 @@ brew install ballunstar/tap/vibewidget
 vibewidget-refresh
 ```
 
-No `brew tap` step: naming the formula in full is what tells recent Homebrew
-you trust it. Tapping the whole tap first is what gets refused, and `brew trust
+Nothing is compiled and nothing is signed on your machine, so there is no Xcode
+and no Apple ID in the way — the release ships an already-signed universal
+bundle. macOS 14 or newer.
+
+No `brew tap` step: naming the formula in full is what tells recent Homebrew you
+trust it. Tapping the whole tap first is what gets refused, and `brew trust
 ballunstar/tap` is the answer to that.
 
-Or from a clone: `./build.sh`.
+`vibewidget-refresh` is the second half of the install, not a formality — see
+[Signing](#signing). Run it again after every `brew upgrade`.
 
-Both need **Xcode** (not just the Command Line Tools — an app extension will
-not build without it) and an **Apple Development certificate**, which a free
-Apple ID issues: Xcode → Settings… → Accounts → add your Apple ID → Manage
-Certificates… → **+** → Apple Development. No paid membership is involved.
-
-`vibewidget-refresh` is not a formality — see [Signing](#signing). Run it again
-after every `brew upgrade`.
+Working from a clone instead: `./build.sh` builds and installs in one step, and
+needs Xcode and a certificate of your own.
 
 ## Adding the widget
 
@@ -194,9 +194,9 @@ compiler shims ahead of `swiftc` and the renderer does not survive that.
 
 ## Signing
 
-Ad-hoc signing (`-`) builds fine but the widget never registers, so every
-install has to be signed with a real **Apple Development** identity. Automatic
-signing asks for a *Mac Development* certificate instead, so signing is manual:
+Ad-hoc signing (`-`) builds fine but the widget never registers, so the bundle
+has to carry a real **Apple Development** identity. Automatic signing asks for a
+*Mac Development* certificate instead, so signing is manual:
 
 ```
 CODE_SIGN_STYLE    = Manual
@@ -206,28 +206,37 @@ DEVELOPMENT_TEAM   = <the certificate's OU>
 
 The Team ID is the certificate's **OU**, not the identifier shown inside the
 identity's name, and it is read off the certificate at build time rather than
-written down — macOS requires the App Group to carry the Team ID of whoever
-signed the bundle, and everyone building this from source signs it themselves.
-One detected value reaches all three places that need it: `DEVELOPMENT_TEAM`,
-the `$(APP_GROUP_IDENTIFIER)` in both entitlement files, and an
-`AppGroupIdentifier` key in both `Info.plist`s that `UsageStore` reads back.
+written down. One detected value reaches all three places that need it:
+`DEVELOPMENT_TEAM`, the `$(APP_GROUP_IDENTIFIER)` in both entitlement files, and
+an `AppGroupIdentifier` key in both `Info.plist`s that `UsageStore` reads back.
 
-**Homebrew cannot do the signing.** It forks builds through `setsid(2)`
-([`sandbox.rb`][sandbox]), which leaves the user's security session behind: no
-login keychain, so `codesign` finds no identity and there is no certificate to
-read a Team ID from. Disabling the sandbox does not help — the fork is
-unconditional. So `brew install` compiles and leaves the bundle ad-hoc signed,
-and `vibewidget-refresh` — running in your own shell, where the keychain is
-reachable — signs it, fills in the group identifier, installs it to
-`~/Applications`, and re-registers the extension.
+**Who signs, and where.** Not the person installing: releases are signed on the
+maintainer's Mac and shipped built, which is what keeps Xcode and an Apple ID
+off the list of things an install needs. Neither CI nor Homebrew could do it
+anyway — both fork their work through `setsid(2)` ([`sandbox.rb`][sandbox]),
+which leaves the user's security session behind, and without a login keychain
+`codesign` reports *no identity found*. Turning the Homebrew sandbox off does
+not help; the fork is unconditional.
 
-That last step is why the command exists at all: the widget gallery serves the
-extension from a LaunchServices record, so an upgraded `.appex` keeps running
-the old code until something re-registers the app.
+Gatekeeper rejects an Apple Development signature — `spctl` says so plainly —
+but it is only consulted for quarantined files, and a Homebrew *formula* leaves
+none behind. (A *cask* does, which is one reason this is not one, and why the
+same bundle handed over as a `.dmg` would be blocked.)
 
-Distributing a *built* app would need a **Developer ID** certificate and
-notarisation, both of which require the paid Apple Developer Program. Building
-on the user's machine is what avoids that.
+**`vibewidget-refresh` is what remains.** Homebrew may not write to `$HOME`, and
+the widget gallery serves the extension from a LaunchServices record, so an
+upgraded `.appex` keeps running the old code until the app is re-registered.
+The command copies the bundle to `~/Applications`, re-registers it, and starts
+it.
+
+Its `--sign` flag re-signs the installed copy with your own certificate and
+rewrites the group identifier to match, which is the repair if this Mac will not
+honour the signature the release shipped with — the widget would be missing from
+the gallery while the menu bar app still worked. That path is the one that needs
+Xcode and a free Apple ID.
+
+Distributing without any of this would need a **Developer ID** certificate and
+notarisation, both of which require the paid Apple Developer Program.
 
 [sandbox]: https://github.com/Homebrew/brew/blob/main/Library/Homebrew/sandbox.rb
 
@@ -248,8 +257,9 @@ App/         menu bar app — owns refreshing
 Widget/      WidgetKit extension — read-only
 Tools/
   MakeIcon.swift             draws AppIcon.icns, one render per iconset size
-  refresh.sh                 sign, install, re-register — installed as
-                             vibewidget-refresh
+  refresh.sh                 install, re-register, optionally re-sign —
+                             installed as vibewidget-refresh
+  release.sh                 build, sign, publish, update the tap
 Formula/vibewidget.rb        the Homebrew formula, mirrored into the tap
 generate_project.py          emits VibeWidget.xcodeproj
 ```
@@ -260,13 +270,18 @@ generate_project.py          emits VibeWidget.xcodeproj
 ## Releasing
 
 ```bash
-git tag v1.1.0 && git push --tags
+Tools/release.sh 1.1.0
 ```
 
-`.github/workflows/release.yml` packs a tarball, publishes it, rewrites the
-`url` and `sha256` in `Formula/vibewidget.rb`, and pushes that to
-`ballunstar/homebrew-tap`. It needs a `TAP_GITHUB_TOKEN` secret with write
-access to the tap. Users then run `brew upgrade && vibewidget-refresh`.
+It builds a universal Release, refuses to continue unless the result carries a
+Team ID, packages the bundle with `ditto`, tags, publishes the release, rewrites
+the `url`, `version` and `sha256` in `Formula/vibewidget.rb`, and pushes that to
+`ballunstar/homebrew-tap`. Users then run `brew upgrade && vibewidget-refresh`.
 
-The version comes from the tag: `generate_project.py` reads `git describe`, so
-`MARKETING_VERSION` and both `CFBundleShortVersionString`s follow it.
+This is a local script rather than a workflow because the machine with the
+certificate is the only one that can produce a shippable bundle. CI still builds
+every push, unsigned, to catch what a compiler can catch.
+
+The version reaches the app through `VIBEWIDGET_VERSION`; without it
+`generate_project.py` falls back to `git describe`, so a plain `./build.sh`
+stamps whatever the last tag was.

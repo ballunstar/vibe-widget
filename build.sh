@@ -3,15 +3,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Homebrew passes both: it installs the bundle itself, and it cannot sign —
-# see the comment on UNSIGNED in generate_project.py.
+# --build-only --unsigned --no-icon is what CI uses: it only checks that the
+# sources still compile, on a runner with no certificate. Releases go through
+# Tools/release.sh instead.
 BUILD_ONLY=""
 NO_ICON=""
+UNIVERSAL=""
 for arg in "$@"; do
   case "$arg" in
     --build-only) BUILD_ONLY=1 ;;
     --unsigned)   export VIBEWIDGET_UNSIGNED=1 ;;
     --no-icon)    NO_ICON=1 ;;
+    --universal)  UNIVERSAL=1 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -43,8 +46,15 @@ echo "==> building"
 # bundle, so the verdict comes from the log rather than from the exit status.
 LOG="$(mktemp -t vibewidget-build)"
 set +o pipefail
+# Building through a scheme narrows the build to this Mac's own architecture
+# whatever the project says, so a shipping build has to name both here. Left
+# off by default — it doubles the build for something only releases need.
+ARCH_ARGS=()
+[ -n "$UNIVERSAL" ] && ARCH_ARGS=(ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO)
+
 xcodebuild -project VibeWidget.xcodeproj -scheme VibeWidget \
-  -configuration Release -derivedDataPath build build 2>&1 \
+  -configuration Release -derivedDataPath build \
+  ${ARCH_ARGS[@]:+"${ARCH_ARGS[@]}"} build 2>&1 \
   | tee "$LOG" | grep -E "error:|warning:|BUILD" || true
 set -o pipefail
 if ! grep -q "BUILD SUCCEEDED" "$LOG"; then

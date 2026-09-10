@@ -1,12 +1,13 @@
 import SwiftUI
 
 extension ProviderUsage.Provider {
-    /// The two brand colours the app icon is built from: coral for Claude,
-    /// cyan for Codex.
+    /// Official provider brand colours used throughout the app and widget.
     var accent: Color {
         switch self {
-        case .claude: return Color(red: 1.00, green: 0.42, blue: 0.29)
-        case .codex: return Color(red: 0.24, green: 0.85, blue: 0.96)
+        case .claude:
+            return Color(red: 217.0 / 255.0, green: 119.0 / 255.0, blue: 87.0 / 255.0)
+        case .codex:
+            return Color(red: 16.0 / 255.0, green: 163.0 / 255.0, blue: 127.0 / 255.0)
         }
     }
 }
@@ -111,4 +112,3 @@ struct SegmentedBar: View {
         }
     }
 }
-
