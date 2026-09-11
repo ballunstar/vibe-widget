@@ -1,9 +1,9 @@
 class Vibewidget < Formula
   desc "Menu bar app and widget showing how much Claude and Codex usage is left"
   homepage "https://github.com/ballunstar/vibe-widget"
-  url "https://github.com/ballunstar/vibe-widget/releases/download/v1.3.0/vibewidget-1.3.0-macos.zip"
-  version "1.3.0"
-  sha256 "822bc00ff8f44009f8a526d52a244c4e8a78fb8a36d4509f5f86275edc23490e"
+  url "https://github.com/ballunstar/vibe-widget/releases/download/v1.4.0/vibewidget-1.4.0-macos.zip"
+  version "1.4.0"
+  sha256 "bb8373f187b9ffeca45beebf6778b2e72729114dabf0e6b63816ca670943fb5c"
   license "MIT"
 
   # A built, signed bundle rather than a source build: macOS ties an App Group
