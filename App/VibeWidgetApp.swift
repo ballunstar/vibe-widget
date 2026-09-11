@@ -28,7 +28,7 @@ final class UsageViewModel: ObservableObject {
         timer = nil
         guard settings.automaticRefresh else { return }
 
-        let interval = TimeInterval(max(1, settings.refreshIntervalMinutes) * 60)
+        let interval = TimeInterval(max(15, settings.refreshIntervalSeconds))
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { await self?.refresh() }
         }
@@ -48,25 +48,28 @@ final class UsageViewModel: ObservableObject {
     // MARK: - Menu bar title
 
     /// Smallest remaining slice across everything.
+    /// The menu bar reports the **session** window only.
+    ///
+    /// Not the tightest of the two: the weekly figure moves slowly and, for
+    /// ChatGPT, is only as fresh as the last Codex CLI run — so a menu bar
+    /// driven by it can sit at a stale number for hours while the 5-hour
+    /// window it is meant to reflect is long since full. The widgets still
+    /// show both.
     private var lowest: (provider: ProviderUsage.Provider, window: UsageWindow)? {
         snapshot.providers
-            .flatMap { usage in
-                [usage.session, usage.weekly].compactMap { $0 }.map { (usage.provider, $0) }
-            }
+            .compactMap { usage in usage.session.map { (usage.provider, $0) } }
             .min { $0.1.remainingPercent < $1.1.remainingPercent }
     }
 
-    /// Percent remaining for one provider — its tightest window, i.e. the
-    /// number that will actually stop you. Nil until there is a reading.
+    /// Percent remaining in one provider's session (5-hour) window, which is
+    /// what the menu bar gauge draws. Nil until there is a reading.
     func remaining(for provider: ProviderUsage.Provider) -> Double? {
         guard snapshot.hasData else { return nil }
         return lowestFor(provider)?.remainingPercent
     }
 
     private func lowestFor(_ provider: ProviderUsage.Provider) -> UsageWindow? {
-        let usage = provider == .claude ? snapshot.claude : snapshot.codex
-        return [usage.session, usage.weekly].compactMap { $0 }
-            .min { $0.remainingPercent < $1.remainingPercent }
+        (provider == .claude ? snapshot.claude : snapshot.codex).session
     }
 
     /// Takes the mode as an argument rather than reading it from settings: the

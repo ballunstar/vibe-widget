@@ -11,9 +11,19 @@ final class AppSettings: ObservableObject {
 
     private init() {
         defaults = UserDefaults(suiteName: UsageStore.appGroupIdentifier) ?? .standard
+
+        // Before register(defaults:), which would answer this lookup with the
+        // fallback and make an upgrade look like a fresh install — quietly
+        // resetting an interval the user had chosen.
+        if defaults.object(forKey: Key.refreshIntervalSeconds) == nil,
+           let legacyMinutes = defaults.object(forKey: Key.refreshIntervalMinutes) as? Int,
+           legacyMinutes > 0 {
+            defaults.set(legacyMinutes * 60, forKey: Key.refreshIntervalSeconds)
+        }
+
         defaults.register(defaults: [
             Key.automaticRefresh: true,
-            Key.refreshIntervalMinutes: 15,
+            Key.refreshIntervalSeconds: 900,
             Key.showInMenuBar: true,
             Key.menuBarDisplay: MenuBarDisplay.iconOnly.rawValue,
             Key.compactNumbers: false,
@@ -27,7 +37,8 @@ final class AppSettings: ObservableObject {
 
     private enum Key {
         static let automaticRefresh = "automaticRefresh"
-        static let refreshIntervalMinutes = "refreshIntervalMinutes"
+        static let refreshIntervalMinutes = "refreshIntervalMinutes"   // legacy, migrated
+        static let refreshIntervalSeconds = "refreshIntervalSeconds"
         static let showInMenuBar = "showInMenuBar"
         static let menuBarDisplay = "menuBarDisplay"
         static let compactNumbers = "compactNumbers"
@@ -79,12 +90,16 @@ final class AppSettings: ObservableObject {
         set { set(newValue.rawValue, Key.appearance) }
     }
 
-    /// Options offered for the refresh timer. Anything faster than 5 minutes
-    /// just burns requests — the windows move in percent, not in seconds.
-    static let refreshChoices = [5, 10, 15, 30, 60]
+    /// Options offered for the refresh timer, in seconds.
+    static let refreshChoices = [30, 60, 300, 600, 900, 1800, 3600]
 
-    static func refreshLabel(_ minutes: Int) -> String {
-        minutes >= 60 ? "Every hour" : "Every \(minutes) minutes"
+    static func refreshLabel(_ seconds: Int) -> String {
+        switch seconds {
+        case ..<60: return "Every \(seconds) seconds"
+        case 60: return "Every minute"
+        case 3600: return "Every hour"
+        default: return "Every \(seconds / 60) minutes"
+        }
     }
 
     // MARK: - Values
@@ -94,9 +109,11 @@ final class AppSettings: ObservableObject {
         set { set(newValue, Key.automaticRefresh) }
     }
 
-    var refreshIntervalMinutes: Int {
-        get { defaults.integer(forKey: Key.refreshIntervalMinutes) }
-        set { set(newValue, Key.refreshIntervalMinutes) }
+    /// Seconds, not minutes: the shortest useful interval is now below a
+    /// minute, which whole minutes cannot express.
+    var refreshIntervalSeconds: Int {
+        get { defaults.integer(forKey: Key.refreshIntervalSeconds) }
+        set { set(newValue, Key.refreshIntervalSeconds) }
     }
 
     var showInMenuBar: Bool {

@@ -184,11 +184,11 @@ struct SettingsView: View {
                 Divider().padding(.horizontal, 16)
                 SettingRow(title: "Refresh interval") {
                     Picker("", selection: Binding(
-                        get: { settings.refreshIntervalMinutes },
-                        set: { settings.refreshIntervalMinutes = $0; model.rescheduleTimer() }
+                        get: { settings.refreshIntervalSeconds },
+                        set: { settings.refreshIntervalSeconds = $0; model.rescheduleTimer() }
                     )) {
-                        ForEach(AppSettings.refreshChoices, id: \.self) { minutes in
-                            Text(AppSettings.refreshLabel(minutes)).tag(minutes)
+                        ForEach(AppSettings.refreshChoices, id: \.self) { seconds in
+                            Text(AppSettings.refreshLabel(seconds)).tag(seconds)
                         }
                     }
                     .labelsHidden()
