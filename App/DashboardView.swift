@@ -1,185 +1,236 @@
 import SwiftUI
 
-// MARK: - Building blocks
+// MARK: - Usage building blocks
 
-/// One window (session or weekly) inside a provider card.
+/// One allowance inside a provider card. The percentage is the dominant fact;
+/// the segmented bar is its single supporting visual encoding.
 struct WindowPanel: View {
     let title: String
-    let usedSuffix: String
+    /// Only for an allowance whose name does not explain itself. "5-hour" and
+    /// "Weekly" already did, and their captions only restated them.
+    var detail: String?
     let window: UsageWindow?
     let tint: Color
 
+    private var percentage: String {
+        window.map { "\(Int($0.remainingPercent.rounded()))%" } ?? "—"
+    }
+
+    private var resetText: String {
+        guard let date = window?.resetsAt else { return "Reset time unavailable" }
+        guard date > Date() else { return "Reset time passed · Refresh needed" }
+        return "Resets \(date.formatted(.relative(presentation: .numeric)))"
+    }
+
+    private var barTint: Color { usageTint(for: window, accent: tint) }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Remaining")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: LayoutSpacing.tight) {
+            HStack(alignment: .firstTextBaseline, spacing: LayoutSpacing.compact) {
+                VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
+                    Text(title)
+                        .font(.headline)
+                    if let detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
-                Text(window.map { "\(Int($0.remainingPercent.rounded()))%" } ?? "—")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                Spacer(minLength: LayoutSpacing.compact)
+
+                Text(percentage)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(window == nil ? Color.secondary : tint)
-
-                SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: tint)
-                    .frame(height: 9)
-
-                Text(window.map { "~ \(Int($0.usedPercent.rounded()))% used \(usedSuffix)" }
-                     ?? "no data yet")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(usageValueTint(for: window))
             }
-            Spacer(minLength: 0)
-            RingGauge(remaining: window?.remainingPercent ?? 0, tint: tint)
+
+            SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: barTint)
+                .frame(height: 8)
+
+            Text(window == nil ? "No usage data yet" : resetText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .padding(14)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
-        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(percentage) remaining. \(window == nil ? "No usage data yet" : resetText)")
     }
 }
 
-/// A provider's whole card: identity, status, and both windows.
+/// A provider's complete status, kept on one surface rather than nesting a card
+/// around a second set of cards.
 struct DashboardProviderCard: View {
     let usage: ProviderUsage
 
     private var tint: Color { usage.provider.accent }
 
-    private var subtitle: String {
-        switch usage.provider {
-        case .claude: return "Your AI coding partner"
-        case .codex: return "Your coding agent"
-        }
+    private var limits: [(title: String, window: UsageWindow?)] {
+        [("5-hour", usage.session), ("Weekly", usage.weekly)]
+    }
+
+    private var hasData: Bool {
+        usage.session != nil || usage.weekly != nil || usage.modelScoped != nil
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                ProviderLogo(provider: usage.provider, size: 38)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(usage.provider.displayName)
-                        .font(.system(size: 24, weight: .bold))
-                    Text(subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                StatusBadge(usage: usage)
+        VStack(alignment: .leading, spacing: LayoutSpacing.standard) {
+            HStack(spacing: LayoutSpacing.compact) {
+                ProviderLogo(provider: usage.provider, size: 34)
+                Text(usage.provider.displayName)
+                    .font(.title2.weight(.bold))
+                Spacer(minLength: LayoutSpacing.compact)
             }
 
-            WindowPanel(title: "Session", usedSuffix: "this session",
-                        window: usage.session, tint: tint)
-            WindowPanel(title: "Weekly", usedSuffix: "this week",
-                        window: usage.weekly, tint: tint)
+            // A pill reading "Needs attention" above a line naming the actual
+            // problem said the same thing twice, and its healthy counterpart
+            // said nothing the figures below did not already say.
+            if let error = usage.error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("\(usage.provider.displayName) needs attention. \(error)")
+            } else if !hasData {
+                Label("Waiting for usage data", systemImage: "clock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            ForEach(Array(limits.enumerated()), id: \.offset) { index, limit in
+                if index > 0 { Divider() }
+                WindowPanel(title: limit.title, window: limit.window, tint: tint)
+            }
+
+            if let scoped = usage.modelScoped {
+                Divider()
+                supplementalLimit(scoped)
+            }
         }
-        .padding(16)
+        .padding(LayoutSpacing.standard)
         .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
         )
     }
-}
 
-/// Green when the last refresh worked, amber with the reason when it did not.
-struct StatusBadge: View {
-    let usage: ProviderUsage
-
-    var body: some View {
-        let ok = usage.error == nil
-        HStack(spacing: 5) {
-            Circle()
-                .fill(ok ? Color.green : Color.orange)
-                .frame(width: 7, height: 7)
-            Text(ok ? "Online" : (usage.error ?? "Error"))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(ok ? Color.primary : Color.orange)
-                .lineLimit(1)
+    private func supplementalLimit(_ window: UsageWindow) -> some View {
+        VStack(alignment: .leading, spacing: LayoutSpacing.tight) {
+            HStack(alignment: .firstTextBaseline, spacing: LayoutSpacing.tight) {
+                VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
+                    Text(usage.modelScopedName ?? "Model")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Model-specific weekly allowance")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: LayoutSpacing.compact)
+                Text("\(Int(window.remainingPercent.rounded()))%")
+                    .font(.title3.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(usageValueTint(for: window))
+            }
+            SegmentedBar(remaining: window.remainingPercent,
+                         tint: usageTint(for: window, accent: tint), segments: 8)
+                .frame(height: 6)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background((ok ? Color.green : Color.orange).opacity(0.13), in: Capsule())
-        .help(usage.error ?? "Last refresh succeeded")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(usage.modelScopedName ?? "Model"), \(Int(window.remainingPercent.rounded())) percent remaining")
     }
 }
 
-// MARK: - Next reset
-
-/// Which allowance rolls over next, and how long that is.
-struct NextResetPanel: View {
+/// The dashboard's first answer: the allowance most likely to stop work.
+struct LimitingAllowancePanel: View {
     let snapshot: UsageSnapshot
 
-    private struct Upcoming {
+    private struct Item {
         let provider: ProviderUsage.Provider
-        let date: Date
+        let label: String
+        let window: UsageWindow
     }
 
-    private var upcoming: [Upcoming] {
-        snapshot.providers.flatMap { usage -> [Upcoming] in
-            [usage.session, usage.weekly]
-                .compactMap { $0?.resetsAt }
-                .map { Upcoming(provider: usage.provider, date: $0) }
+    private var limiting: Item? {
+        snapshot.providers.flatMap { usage -> [Item] in
+            var windows: [(String, UsageWindow?)] = [
+                ("5-hour", usage.session),
+                ("Weekly", usage.weekly),
+            ]
+            if usage.modelScoped != nil {
+                windows.append((usage.modelScopedName ?? "Model", usage.modelScoped))
+            }
+            return windows.compactMap { label, window in
+                window.map { Item(provider: usage.provider, label: label, window: $0) }
+            }
         }
-        .filter { $0.date > Date() }
-        .sorted { $0.date < $1.date }
+        .min { $0.window.remainingPercent < $1.window.remainingPercent }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: "clock")
-                    .font(.system(size: 18, weight: .light))
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Next reset")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Which allowance resets next?")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Text("All times in your local timezone")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
-
-            if upcoming.isEmpty {
-                Text("No upcoming resets — every window is already full.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            } else {
-                HStack(alignment: .top, spacing: 22) {
-                    ForEach(Array(upcoming.prefix(3).enumerated()), id: \.offset) { _, item in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Rectangle()
-                                .fill(item.provider.accent)
-                                .frame(width: 26, height: 3)
-                                .clipShape(Capsule())
-                            Text(item.provider.displayName)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(item.provider.accent)
-                            Text(item.date, format: .relative(presentation: .numeric))
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
-                            Text(item.date.formatted(date: .omitted, time: .shortened))
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                        }
+        if let limiting {
+            VStack(alignment: .leading, spacing: LayoutSpacing.compact) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: LayoutSpacing.compact) {
+                        identity(limiting)
+                        Spacer(minLength: LayoutSpacing.standard)
+                        reset(limiting.window)
+                        percentage(limiting)
                     }
-                    Spacer(minLength: 0)
+
+                    VStack(alignment: .leading, spacing: LayoutSpacing.compact) {
+                        HStack(spacing: LayoutSpacing.compact) {
+                            identity(limiting)
+                            Spacer(minLength: LayoutSpacing.tight)
+                            percentage(limiting)
+                        }
+                        reset(limiting.window)
+                    }
                 }
+                // No bar here: this same allowance is drawn with one inside its
+                // provider card a few hundred points below.
+            }
+            .padding(LayoutSpacing.standard)
+            .background(limiting.provider.accent.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 16))
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func identity(_ item: Item) -> some View {
+        HStack(spacing: LayoutSpacing.tight) {
+            ProviderLogo(provider: item.provider, size: 28)
+            VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
+                Text("\(item.provider.displayName) · \(item.label)")
+                    .font(.headline)
+                Text("Most constrained allowance")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
-        )
+    }
+
+    private func percentage(_ item: Item) -> some View {
+        Text("\(Int(item.window.remainingPercent.rounded()))%")
+            .font(.system(size: 40, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(usageValueTint(for: item.window))
+    }
+
+    /// Carries the clock time too, which is what the separate "Next reset" row
+    /// used to be for.
+    private func reset(_ window: UsageWindow) -> some View {
+        Group {
+            if let date = window.resetsAt, date > Date() {
+                Label("Resets \(date.formatted(.relative(presentation: .numeric))) · \(date.formatted(date: .omitted, time: .shortened))",
+                      systemImage: "clock")
+            } else {
+                Label("Reset time unavailable", systemImage: "clock.badge.questionmark")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
     }
 }
 
@@ -190,68 +241,151 @@ struct DashboardView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
+        ScrollView {
+            VStack(alignment: .leading, spacing: LayoutSpacing.section) {
+                header
 
-            HStack(alignment: .top, spacing: 16) {
-                ForEach(model.snapshot.providers, id: \.provider) { usage in
-                    DashboardProviderCard(usage: usage)
-                        .frame(maxWidth: .infinity)
+                if model.snapshot.hasData {
+                    LimitingAllowancePanel(snapshot: model.snapshot)
+                    providerLayout
+                } else {
+                    emptyState
                 }
             }
-
-            NextResetPanel(snapshot: model.snapshot)
+            .frame(maxWidth: 1120)
+            .padding(LayoutSpacing.page)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
-        .padding(20)
-        .frame(minWidth: 860, minHeight: 640)
+        .frame(minWidth: 560, minHeight: 520)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
+    /// Claude can carry a third allowance and an error line that ChatGPT does
+    /// not, so side-by-side cards are only equivalent if they are also the same
+    /// height. A `Grid` row sizes itself to its tallest cell and then offers
+    /// that height to the others; an `HStack` inside a scroll view has no
+    /// bounded height to share, so `maxHeight: .infinity` there does nothing.
+    private var providerLayout: some View {
+        ViewThatFits(in: .horizontal) {
+            Grid(horizontalSpacing: LayoutSpacing.standard, verticalSpacing: 0) {
+                GridRow {
+                    providerCards(minWidth: 360, equalHeight: true)
+                }
+            }
+
+            VStack(spacing: LayoutSpacing.standard) {
+                providerCards(minWidth: nil, equalHeight: false)
+            }
+            // Stacked cards would otherwise inherit the whole window width, and
+            // a 700pt row leaves the label and its percentage at opposite ends
+            // of the screen. Capping the column keeps both branches reading the
+            // same way.
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func providerCards(minWidth: CGFloat?, equalHeight: Bool) -> some View {
+        ForEach(model.snapshot.providers, id: \.provider) { usage in
+            DashboardProviderCard(usage: usage)
+                .frame(minWidth: minWidth, maxWidth: .infinity,
+                       maxHeight: equalHeight ? .infinity : nil, alignment: .top)
+        }
+    }
+
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "gauge.with.needle")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(ProviderUsage.Provider.claude.accent)
-                .frame(width: 44, height: 44)
-                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11))
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("VibeWidget")
-                    .font(.system(size: 21, weight: .bold))
-                Text("Usage at a glance. Keep building.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: LayoutSpacing.standard) {
+                titleBlock
+                Spacer(minLength: LayoutSpacing.section)
+                freshness(.trailing)
+                actions
             }
 
-            Spacer(minLength: 12)
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text("Last updated")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Text(model.snapshot.hasData
-                     ? model.snapshot.capturedAt.formatted(date: .abbreviated, time: .shortened)
-                     : "never")
-                    .font(.system(size: 11, weight: .medium))
+            VStack(alignment: .leading, spacing: LayoutSpacing.compact) {
+                titleBlock
+                HStack(spacing: LayoutSpacing.compact) {
+                    // Right-aligned under a left-aligned title reads as a
+                    // mistake once the header stacks.
+                    freshness(.leading)
+                    Spacer(minLength: LayoutSpacing.tight)
+                    actions
+                }
             }
+        }
+    }
 
+    private var titleBlock: some View {
+        HStack(spacing: LayoutSpacing.compact) {
+            Image(nsImage: MenuBarGauge.image(claude: model.remaining(for: .claude),
+                                              chatgpt: model.remaining(for: .codex),
+                                              side: 42))
+                .accessibilityHidden(true)
+
+            // The subtitle described exactly what the two provider cards below
+            // already show.
+            Text("Usage")
+                .font(.title2.weight(.bold))
+        }
+    }
+
+    private func freshness(_ alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: LayoutSpacing.micro) {
+            Text("Last updated")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(model.snapshot.hasData
+                 ? model.snapshot.capturedAt.formatted(date: .abbreviated, time: .shortened)
+                 : "Not yet")
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var actions: some View {
+        HStack(spacing: LayoutSpacing.tight) {
             Button {
                 Task { await model.refresh() }
             } label: {
-                if model.isRefreshing {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: "arrow.clockwise")
-                }
+                Label(model.isRefreshing ? "Refreshing…" : "Refresh",
+                      systemImage: "arrow.clockwise")
             }
+            .buttonStyle(.borderedProminent)
             .disabled(model.isRefreshing)
-            .help("Refresh now")
+            .keyboardShortcut("r", modifiers: .command)
+            .accessibilityHint("Fetch the latest Claude and ChatGPT usage")
 
-            Button("Sync now") { Task { await model.refresh() } }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.isRefreshing)
-
-            Button("Preferences…") { openWindow(id: VibeWidgetApp.settingsWindowID) }
+            Button {
+                openWindow(id: VibeWidgetApp.settingsWindowID)
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .buttonStyle(.bordered)
         }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: LayoutSpacing.compact) {
+            Image(systemName: model.isRefreshing ? "arrow.clockwise" : "chart.bar.xaxis")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(model.isRefreshing ? "Fetching usage…" : "No usage data yet")
+                .font(.title3.weight(.semibold))
+            Text("Refresh after using Claude Code or Codex CLI so VibeWidget can read their latest allowance data.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 440)
+            if !model.isRefreshing {
+                Button("Refresh Usage") { Task { await model.refresh() } }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 300)
+        .padding(LayoutSpacing.page)
+        .accessibilityElement(children: .contain)
     }
 }

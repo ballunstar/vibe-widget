@@ -153,6 +153,8 @@ final class UsageViewModel: ObservableObject {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Appearance.apply(AppSettings.shared.appearance)
+        UpdateChecker.shared.setEnabled(AppSettings.shared.checkForUpdates)
+        AppAccess.apply(menuBarVisible: AppSettings.shared.showInMenuBar)
     }
 
     /// Clicking a widget sends `vibewidget://dashboard` here. A menu bar app is
@@ -160,16 +162,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         guard urls.contains(where: VibeWidgetURL.isDashboard) else { return }
         NSApp.activate(ignoringOtherApps: true)
-        DashboardOpenRequest.shared.pending = true
+        DashboardOpenRequest.shared.open()
+    }
+
+    /// When the menu-bar item is hidden the app becomes a regular Dock app.
+    /// Reopening it should restore the dashboard instead of activating an
+    /// apparently empty process.
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return false }
+        if let dashboard = sender.windows.first(where: { $0.title == "VibeWidget" }) {
+            dashboard.makeKeyAndOrderFront(nil)
+            sender.activate(ignoringOtherApps: true)
+            return false
+        }
+        DashboardOpenRequest.shared.open()
+        return true
     }
 }
 
 /// Bridges the delegate's URL callback to SwiftUI, which is the only side that
 /// can open a `Window` scene.
+///
+/// A counter rather than a flag: the label that services these requests is
+/// mounted only while the menu bar item is visible, so a request can be raised
+/// with nobody listening. A flag left standing at `true` would then swallow
+/// every later request, because setting `true` again is not a change.
 @MainActor
 final class DashboardOpenRequest: ObservableObject {
     static let shared = DashboardOpenRequest()
-    @Published var pending = false
+    @Published private(set) var requestID = 0
+    func open() { requestID += 1 }
 }
 
 /// The status item's label, and the app's only permanently-mounted view.
@@ -180,22 +203,36 @@ final class DashboardOpenRequest: ObservableObject {
 struct MenuBarLabel: View {
     let icon: Image
     let title: String
+    let accessibilityTitle: String
     @ObservedObject private var request = DashboardOpenRequest.shared
     @Environment(\.openWindow) private var openWindow
+    @State private var servicedID = 0
 
     var body: some View {
-        icon
-        if !title.isEmpty {
-            Text(title)
-        }
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onChange(of: request.pending) { _, pending in
-                guard pending else { return }
-                request.pending = false
-                openWindow(id: VibeWidgetApp.dashboardWindowID)
-                NSApp.activate(ignoringOtherApps: true)
+        HStack(spacing: 2) {
+            icon.accessibilityHidden(true)
+            if !title.isEmpty {
+                Text(title)
             }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityTitle)
+        .background {
+            Color.clear
+                .frame(width: 0, height: 0)
+                // `onAppear` as well as `onChange`: turning the menu bar item
+                // back on remounts this view, and a request raised while it was
+                // gone still deserves its window.
+                .onAppear { serviceRequest() }
+                .onChange(of: request.requestID) { _, _ in serviceRequest() }
+        }
+    }
+
+    private func serviceRequest() {
+        guard request.requestID != servicedID else { return }
+        servicedID = request.requestID
+        openWindow(id: VibeWidgetApp.dashboardWindowID)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -208,6 +245,16 @@ enum Appearance {
         }
         // Placed widgets render in their own process, so they need telling.
         WidgetCenter.shared.reloadAllTimelines()
+    }
+}
+
+/// A hidden menu-bar item must not make a background-only app unreachable.
+/// The preference therefore switches the app's access surface: menu bar while
+/// visible, Dock while hidden.
+enum AppAccess {
+    static func apply(menuBarVisible: Bool) {
+        NSApp.setActivationPolicy(menuBarVisible ? .accessory : .regular)
+        if !menuBarVisible { NSApp.activate(ignoringOtherApps: true) }
     }
 }
 
@@ -250,6 +297,14 @@ struct VibeWidgetApp: App {
                                           chatgpt: model.remaining(for: .codex)))
     }
 
+    private var menuBarAccessibilityTitle: String {
+        let claude = model.remaining(for: .claude)
+            .map { "\(Int($0.rounded())) percent" } ?? "no data"
+        let chatgpt = model.remaining(for: .codex)
+            .map { "\(Int($0.rounded())) percent" } ?? "no data"
+        return "VibeWidget. Claude \(claude) remaining. ChatGPT \(chatgpt) remaining."
+    }
+
     var body: some Scene {
         // Clicking the menu bar item opens a menu; the numbers live in the
         // dashboard window rather than in a popover.
@@ -258,7 +313,8 @@ struct VibeWidgetApp: App {
         MenuBarExtra(isInserted: $showInMenuBar) {
             MenuBarPanel(model: model)
         } label: {
-            MenuBarLabel(icon: menuBarIcon, title: menuBarTitle)
+            MenuBarLabel(icon: menuBarIcon, title: menuBarTitle,
+                         accessibilityTitle: menuBarAccessibilityTitle)
         }
         .menuBarExtraStyle(.window)
 

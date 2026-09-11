@@ -182,6 +182,25 @@ enum ClaudeUsageProvider {
 
     // MARK: - Fetch
 
+    /// Seconds to wait before each retry of a throttled request.
+    private static let retryBackoff: [Double] = [3, 8, 20]
+
+    /// Returns the first non-429 response, or the last 429 if all attempts are
+    /// refused.
+    private static func fetchWithRetry(_ request: URLRequest) async throws -> (Data, Int) {
+        var last: (Data, Int) = (Data(), 0)
+        for attempt in 0...retryBackoff.count {
+            if attempt > 0 {
+                try? await Task.sleep(for: .seconds(retryBackoff[attempt - 1]))
+            }
+            let (body, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            last = (body, code)
+            if code != 429 { return last }
+        }
+        return last
+    }
+
     static func fetch() async -> ProviderUsage {
         var result = ProviderUsage(provider: .claude)
         do {
@@ -201,12 +220,19 @@ enum ClaudeUsageProvider {
             request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
             request.timeoutInterval = 15
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            // This endpoint throttles hard and erratically: six calls spaced
+            // three seconds apart were measured as 200, 429, 429, 200, 429,
+            // 429. A single 429 predicts nothing about the next attempt, and
+            // the server's own `retry-after: 0` is no help, so back off on our
+            // own schedule instead of surfacing the first refusal.
+            //
+            // The delays total roughly half a minute, which stays inside even
+            // the shortest refresh interval on offer.
+            let (data, code) = try await fetchWithRetry(request)
+
             guard code == 200 else {
                 switch code {
                 case 401: throw ProviderError.unauthorized
-                // Reachable now that the refresh interval goes down to 30s.
                 // UsageStore keeps the last good reading behind the error, so
                 // being throttled costs the numbers nothing.
                 case 429: throw ProviderError.rateLimited

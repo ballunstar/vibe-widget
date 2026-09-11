@@ -54,8 +54,8 @@ struct ProviderWidget: Widget {
             .containerBackground(.fill.tertiary, for: .widget)
             .widgetURL(VibeWidgetURL.dashboard)
         }
-        .configurationDisplayName("Custom Widget")
-        .description("One service per widget, configured independently. Add two to track both.")
+        .configurationDisplayName("Single Provider Usage")
+        .description("Track Claude or ChatGPT in its own independently configured widget.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }

@@ -24,6 +24,7 @@ final class AppSettings: ObservableObject {
         defaults.register(defaults: [
             Key.automaticRefresh: true,
             Key.refreshIntervalSeconds: 900,
+            Key.checkForUpdates: true,
             Key.showInMenuBar: true,
             Key.menuBarDisplay: MenuBarDisplay.iconOnly.rawValue,
             Key.compactNumbers: false,
@@ -37,6 +38,7 @@ final class AppSettings: ObservableObject {
 
     private enum Key {
         static let automaticRefresh = "automaticRefresh"
+        static let checkForUpdates = "checkForUpdates"
         static let refreshIntervalMinutes = "refreshIntervalMinutes"   // legacy, migrated
         static let refreshIntervalSeconds = "refreshIntervalSeconds"
         static let showInMenuBar = "showInMenuBar"
@@ -114,6 +116,11 @@ final class AppSettings: ObservableObject {
     var refreshIntervalSeconds: Int {
         get { defaults.integer(forKey: Key.refreshIntervalSeconds) }
         set { set(newValue, Key.refreshIntervalSeconds) }
+    }
+
+    var checkForUpdates: Bool {
+        get { defaults.bool(forKey: Key.checkForUpdates) }
+        set { set(newValue, Key.checkForUpdates) }
     }
 
     var showInMenuBar: Bool {

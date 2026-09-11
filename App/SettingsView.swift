@@ -7,23 +7,36 @@ import WidgetKit
 /// A titled group of rows, matching the boxed sections in the design.
 struct SettingsSection<Content: View>: View {
     let title: String
+    var emphasized = false
     @ViewBuilder var content: Content
+
+    /// Only a section that draws a container earns an inset of its own.
+    /// Without one, an extra 16pt would push every heading and row past the
+    /// pane title they are supposed to line up with.
+    private var inset: CGFloat { emphasized ? LayoutSpacing.standard : 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
-            Divider().padding(.horizontal, 16)
+                .font(.subheadline.weight(.semibold))
+                .padding(.top, emphasized ? LayoutSpacing.compact : 0)
+                .padding(.bottom, LayoutSpacing.tight)
+            Divider()
             content
         }
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
-        )
+        .padding(.horizontal, inset)
+        .background {
+            if emphasized {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.primary.opacity(0.035))
+            }
+        }
+        .overlay {
+            if emphasized {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+            }
+        }
     }
 }
 
@@ -34,21 +47,34 @@ struct SettingRow<Control: View>: View {
     @ViewBuilder var control: Control
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12, weight: .medium))
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: LayoutSpacing.page) {
+                label
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                control
             }
-            Spacer(minLength: 12)
-            control
+
+            VStack(alignment: .leading, spacing: LayoutSpacing.tight) {
+                label
+                // A switch stranded under the left edge of a two-line
+                // description reads as a stray control; keep it where the
+                // horizontal layout put it.
+                control.frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .padding(.vertical, LayoutSpacing.compact)
+    }
+
+    private var label: some View {
+        VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
+            Text(title).font(.body.weight(.medium))
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }
 
@@ -58,6 +84,8 @@ struct SettingsView: View {
     @ObservedObject var model: UsageViewModel
     @ObservedObject private var settings = AppSettings.shared
     @State private var section: Pane = .general
+    @State private var showClearCacheConfirmation = false
+    @State private var actionConfirmation: String?
 
     enum Pane: String, CaseIterable, Identifiable {
         case general, accounts, notifications, appearance, advanced
@@ -75,73 +103,98 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-            Divider()
-            detail
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                sidebar
+                Divider()
+                detail(showsTitle: true).frame(minWidth: 490)
+            }
+
+            VStack(spacing: 0) {
+                compactNavigation
+                Divider()
+                // The picker above already names the pane; repeating it as a
+                // title stacked "Settings / General / General" down the window.
+                detail(showsTitle: false)
+            }
         }
-        .frame(minWidth: 840, minHeight: 600)
+        .frame(minWidth: 520, minHeight: 520)
+        .alert("Clear cached usage?", isPresented: $showClearCacheConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear Cache", role: .destructive) { clearCache() }
+        } message: {
+            Text("VibeWidget will delete its saved snapshot and immediately fetch fresh usage data.")
+        }
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 10) {
-                Image(systemName: "gauge.with.needle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(ProviderUsage.Provider.claude.accent)
-                    .frame(width: 38, height: 38)
-                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("VibeWidget").font(.system(size: 15, weight: .bold))
-                    Text("Settings").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
+        // No identity block: the title bar already reads "Settings", and the
+        // version sits in the footer.
+        VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
+            ForEach(Pane.allCases.filter { $0 != .advanced }) { pane in
+                paneButton(pane)
             }
-            .padding(.bottom, 14)
-
-            ForEach(Pane.allCases) { pane in
-                Button {
-                    section = pane
-                } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: pane.icon)
-                            .frame(width: 18)
-                            .foregroundStyle(section == pane
-                                             ? ProviderUsage.Provider.claude.accent
-                                             : Color.secondary)
-                        Text(pane.label).font(.system(size: 12.5, weight: .medium))
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(section == pane ? Color.primary.opacity(0.08) : .clear)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
+            Spacer(minLength: LayoutSpacing.standard)
+            Divider()
+            paneButton(.advanced)
         }
-        .padding(14)
-        .frame(width: 210)
+        .padding(LayoutSpacing.compact)
+        .frame(width: 190)
     }
 
-    private var detail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(section == .general ? "Settings" : section.label)
-                    .font(.system(size: 26, weight: .bold))
-                Spacer()
-                Button("Done") { NSApp.keyWindow?.close() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+    private var compactNavigation: some View {
+        HStack(spacing: LayoutSpacing.compact) {
+            Picker("Settings section", selection: $section) {
+                ForEach(Pane.allCases) { pane in
+                    Label(pane.label, systemImage: pane.icon).tag(pane)
+                }
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
+            .labelsHidden()
+            .controlSize(.large)
+            .frame(width: 200)
+            .accessibilityLabel("Settings section")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, LayoutSpacing.page)
+        .padding(.vertical, LayoutSpacing.compact)
+    }
+
+    private func paneButton(_ pane: Pane) -> some View {
+        Button {
+            section = pane
+        } label: {
+            HStack(spacing: LayoutSpacing.tight) {
+                Image(systemName: pane.icon)
+                    .frame(width: 18)
+                    .foregroundStyle(section == pane
+                                     ? ProviderUsage.Provider.claude.accent
+                                     : Color.secondary)
+                Text(pane.label).font(.body.weight(.medium))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, LayoutSpacing.tight)
+            .padding(.vertical, LayoutSpacing.tight)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(section == pane ? Color.primary.opacity(0.08) : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(section == pane ? .isSelected : [])
+    }
+
+    private func detail(showsTitle: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if showsTitle {
+                Text(section.label)
+                    .font(.title.weight(.bold))
+                    .padding(.horizontal, LayoutSpacing.page)
+                    .padding(.vertical, LayoutSpacing.standard)
+            }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: LayoutSpacing.section) {
                     switch section {
                     case .general: generalPane
                     case .accounts: accountsPane
@@ -150,19 +203,21 @@ struct SettingsView: View {
                     case .advanced: advancedPane
                     }
                 }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 22)
+                .padding(.horizontal, LayoutSpacing.page)
+                .padding(.top, showsTitle ? 0 : LayoutSpacing.page)
+                .padding(.bottom, LayoutSpacing.page)
+                .frame(maxWidth: 760, alignment: .leading)
             }
 
             Divider()
             HStack {
                 Text("VibeWidget \(Bundle.main.shortVersion) (\(Bundle.main.buildVersion))")
-                    .font(.system(size: 10.5))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 12)
+            .padding(.horizontal, LayoutSpacing.page)
+            .padding(.vertical, LayoutSpacing.compact)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -180,8 +235,9 @@ struct SettingsView: View {
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .accessibilityLabel("Automatic refresh")
                 }
-                Divider().padding(.horizontal, 16)
+                Divider()
                 SettingRow(title: "Refresh interval") {
                     Picker("", selection: Binding(
                         get: { settings.refreshIntervalSeconds },
@@ -194,20 +250,38 @@ struct SettingsView: View {
                     .labelsHidden()
                     .frame(width: 190)
                     .disabled(!settings.automaticRefresh)
+                    .accessibilityLabel("Refresh interval")
+                }
+                Divider()
+                SettingRow(title: "Check for updates",
+                           subtitle: "Asks GitHub for the newest release a few times a day. "
+                                   + "Installing one is always a deliberate click.") {
+                    Toggle("", isOn: Binding(
+                        get: { settings.checkForUpdates },
+                        set: { settings.checkForUpdates = $0; UpdateChecker.shared.setEnabled($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(!UpdateChecker.isHomebrewInstall)
+                    .accessibilityLabel("Check for updates")
                 }
             }
 
             SettingsSection(title: "Menu Bar") {
                 SettingRow(title: "Show VibeWidget in menu bar",
-                           subtitle: "Display quick usage info in the menu bar.") {
+                           subtitle: "When hidden, VibeWidget stays available from the Dock.") {
                     Toggle("", isOn: Binding(
                         get: { settings.showInMenuBar },
-                        set: { settings.showInMenuBar = $0 }
+                        set: {
+                            settings.showInMenuBar = $0
+                            AppAccess.apply(menuBarVisible: $0)
+                        }
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .accessibilityLabel("Show VibeWidget in menu bar")
                 }
-                Divider().padding(.horizontal, 16)
+                Divider()
                 SettingRow(title: "Display") {
                     Picker("", selection: Binding(
                         get: { settings.menuBarDisplay },
@@ -220,30 +294,33 @@ struct SettingsView: View {
                     .labelsHidden()
                     .frame(width: 190)
                     .disabled(!settings.showInMenuBar)
+                    .accessibilityLabel("Menu bar display")
                 }
             }
 
             SettingsSection(title: "Widgets") {
                 SettingRow(title: "Show weekly usage",
-                           subtitle: "Off shows only the 5-hour window, across the full column. Per-model weekly limits hide with it.") {
+                           subtitle: "Off shows only the 5-hour window. Per-model limits hide with it.") {
                     Toggle("", isOn: Binding(
                         get: { settings.showWeekly },
                         set: { settings.showWeekly = $0; WidgetCenter.shared.reloadAllTimelines() }
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .accessibilityLabel("Show weekly usage")
                 }
-                Divider().padding(.horizontal, 16)
-                SettingRow(title: "Use compact numbers",
-                           subtitle: "Show smaller, cleaner numbers in widgets.") {
+                Divider()
+                SettingRow(title: "Hide percent symbols",
+                           subtitle: "Show 72 instead of 72% in widgets to save space.") {
                     Toggle("", isOn: Binding(
                         get: { settings.compactNumbers },
                         set: { settings.compactNumbers = $0; WidgetCenter.shared.reloadAllTimelines() }
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .accessibilityLabel("Hide percent symbols")
                 }
-                Divider().padding(.horizontal, 16)
+                Divider()
                 SettingRow(title: "Show reset time",
                            subtitle: "Display when each window resets.") {
                     Toggle("", isOn: Binding(
@@ -252,6 +329,7 @@ struct SettingsView: View {
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .accessibilityLabel("Show reset time")
                 }
             }
 
@@ -264,6 +342,7 @@ struct SettingsView: View {
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .accessibilityLabel("Open VibeWidget at login")
                 }
             }
         }
@@ -284,27 +363,42 @@ struct SettingsView: View {
                             .background(usage.provider.accent.opacity(0.16), in: Capsule())
                             .foregroundStyle(usage.provider.accent)
                     }
-                    Divider().padding(.horizontal, 16)
-                    SettingRow(title: "Status") { StatusBadge(usage: usage) }
-                    Divider().padding(.horizontal, 16)
+                    Divider()
+                    SettingRow(title: "Status") {
+                        Text(statusText(usage))
+                            .font(.body)
+                            .foregroundStyle(usage.error == nil
+                                             ? AnyShapeStyle(.secondary)
+                                             : AnyShapeStyle(Color.orange))
+                            .multilineTextAlignment(.trailing)
+                    }
+                    Divider()
                     SettingRow(title: "Source", subtitle: sourceDescription(usage.provider)) {
                         EmptyView()
                     }
                 }
             }
 
-            Text("Sign in and out from the Claude Code and Codex CLIs — VibeWidget only reads what they store.")
-                .font(.system(size: 10.5))
+            Text("Sign in and out from the Claude Code and Codex CLIs.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// The row's label already says "Status", so the state is plain text here
+    /// rather than a second pill.
+    private func statusText(_ usage: ProviderUsage) -> String {
+        if let error = usage.error { return error }
+        let hasData = usage.session != nil || usage.weekly != nil || usage.modelScoped != nil
+        return hasData ? "Ready" : "Waiting for usage data"
     }
 
     private func sourceDescription(_ provider: ProviderUsage.Provider) -> String {
         switch provider {
         case .claude:
-            return "api.anthropic.com/api/oauth/usage, authorised with the token Claude Code keeps in your keychain — or in ~/.claude/.credentials.json when it cannot use the keychain."
+            return "Claude usage API · Credentials managed by Claude Code"
         case .codex:
-            return "~/.codex/sessions — the rate_limits snapshot the Codex CLI writes into its own session logs."
+            return "Codex session logs · ~/.codex/sessions"
         }
     }
 
@@ -324,8 +418,9 @@ struct SettingsView: View {
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
+                    .accessibilityLabel("Warn when running low")
                 }
-                Divider().padding(.horizontal, 16)
+                Divider()
                 SettingRow(title: "Threshold") {
                     Picker("", selection: Binding(
                         get: { settings.warnThreshold },
@@ -338,11 +433,12 @@ struct SettingsView: View {
                     .labelsHidden()
                     .frame(width: 190)
                     .disabled(!settings.notificationsEnabled)
+                    .accessibilityLabel("Warning threshold")
                 }
             }
 
-            Text("You are warned once per window per reset cycle, so a long session will not repeat the same alert.")
-                .font(.system(size: 10.5))
+            Text("Warned once per window per reset cycle.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -364,11 +460,12 @@ struct SettingsView: View {
                     }
                     .labelsHidden()
                     .frame(width: 190)
+                    .accessibilityLabel("Appearance")
                 }
             }
 
-            Text("Auto follows System Settings › Appearance, including the automatic light-to-dark switch through the day.")
-                .font(.system(size: 10.5))
+            Text("Auto follows System Settings › Appearance.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -377,25 +474,44 @@ struct SettingsView: View {
 
     private var advancedPane: some View {
         Group {
-            SettingsSection(title: "Data") {
+            SettingsSection(title: "Data", emphasized: true) {
                 SettingRow(title: "Shared snapshot",
                            subtitle: UsageStore.cacheURLForDisplay) {
                     Button("Reveal") { UsageStore.revealCacheInFinder() }
                 }
-                Divider().padding(.horizontal, 16)
+                Divider()
                 SettingRow(title: "Reload widgets",
                            subtitle: "Force every placed widget to re-read the snapshot.") {
-                    Button("Reload") { WidgetCenter.shared.reloadAllTimelines() }
-                }
-                Divider().padding(.horizontal, 16)
-                SettingRow(title: "Clear cache",
-                           subtitle: "Delete the snapshot and fetch again from scratch.") {
-                    Button("Clear", role: .destructive) {
-                        UsageStore.clearCache()
-                        Task { await model.refresh() }
+                    Button("Reload") {
+                        WidgetCenter.shared.reloadAllTimelines()
+                        actionConfirmation = "Widgets reloaded."
                     }
                 }
+                Divider()
+                SettingRow(title: "Clear cache",
+                           subtitle: "Delete the snapshot and fetch again from scratch.") {
+                    Button("Clear…", role: .destructive) {
+                        showClearCacheConfirmation = true
+                    }
+                }
+                if let actionConfirmation {
+                    Divider()
+                    Label(actionConfirmation, systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .padding(.vertical, LayoutSpacing.compact)
+                        .accessibilityAddTraits(.isStaticText)
+                }
             }
+        }
+    }
+
+    private func clearCache() {
+        actionConfirmation = "Cache cleared. Fetching fresh usage…"
+        UsageStore.clearCache()
+        Task {
+            await model.refresh()
+            actionConfirmation = "Cache cleared and usage refreshed."
         }
     }
 }

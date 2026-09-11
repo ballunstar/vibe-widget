@@ -81,7 +81,7 @@ SHARED = ["UsageModels.swift", "ClaudeUsageProvider.swift", "CodexUsageProvider.
           "VibeWidgetURL.swift",
           "SelectProviderIntent.swift"]
 APP_SRC = ["VibeWidgetApp.swift", "DashboardView.swift", "SettingsView.swift",
-           "MenuBarGauge.swift", "MenuBarPanel.swift"]
+           "MenuBarGauge.swift", "MenuBarPanel.swift", "UpdateChecker.swift"]
 WID_SRC = ["UsageWidget.swift", "ProviderWidget.swift"]
 ASSETS = ["claude.png", "chatgpt.png"]
 APP_ASSETS = ["navicon.png"]

@@ -102,7 +102,7 @@ struct UsageWidgetView: View {
             // The card layouts run to the edge, so their corners land exactly on
             // the widget's own. Small has no card behind it, so its content
             // still needs a margin of its own.
-            .padding(family == .systemSmall ? 16 : 0)
+            .padding(family == .systemSmall ? LayoutSpacing.standard : 0)
             .applyAppearance(prefs.appearance)
     }
 
@@ -126,6 +126,7 @@ struct UsageWidgetView: View {
             Image(systemName: "menubar.arrow.up.rectangle")
                 .font(.system(size: 18, weight: .light))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("Open VibeWidget")
                 .font(.system(size: 11, weight: .semibold))
             Text("The app fetches your usage")
@@ -141,30 +142,37 @@ struct UsageWidgetView: View {
     /// No room for four numbers, so each provider gets its tightest window —
     /// the one that will stop you first.
     private var small: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: LayoutSpacing.tight) {
             ForEach(visibleProviders, id: \.provider) { usage in
-                let window = tightest(usage)
-                VStack(alignment: .leading, spacing: 5) {
+                let limit = tightest(usage)
+                VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
                     HStack(spacing: 5) {
                         ProviderLogo(provider: usage.provider, size: 13)
-                        Text(usage.provider.displayName)
-                            .font(.system(size: 11, weight: .semibold))
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(usage.provider.displayName)
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(limit?.label ?? "No data")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer(minLength: 0)
-                        Text(percentText(window, compact: prefs.compactNumbers))
+                        Text(percentText(limit?.window, compact: prefs.compactNumbers))
                             .font(.system(size: 17, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(usage.provider.accent)
+                            .foregroundStyle(usageValueTint(for: limit?.window))
                     }
-                    SegmentedBar(remaining: window?.remainingPercent ?? 0,
-                                 tint: usage.provider.accent, segments: 6)
+                    SegmentedBar(remaining: limit?.window.remainingPercent ?? 0,
+                                 tint: usageTint(for: limit?.window,
+                                                 accent: usage.provider.accent), segments: 6)
                         .frame(height: 6)
-                    if prefs.showResetTime, let label = ResetLabel.text(for: window) {
+                    if prefs.showResetTime, let label = ResetLabel.text(for: limit?.window) {
                         Text(label)
-                            .font(.system(size: 8))
+                            .font(.system(size: 9))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
+                .accessibilityElement(children: .combine)
             }
             Spacer(minLength: 0)
         }
@@ -175,11 +183,11 @@ struct UsageWidgetView: View {
     /// Two compact provider surfaces. Each allowance keeps its label, value,
     /// and bar together so the wide layout can be understood at a glance.
     private var medium: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: LayoutSpacing.tight) {
             ForEach(visibleProviders, id: \.provider) { usage in
                 mediumColumn(usage)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(15)
+                    .padding(LayoutSpacing.standard)
                     // Concentric with the widget's own rounding rather than a
                     // fixed radius: the system decides the outer curve, and
                     // ContainerRelativeShape insets it by our margin.
@@ -190,8 +198,8 @@ struct UsageWidgetView: View {
     }
 
     private func mediumColumn(_ usage: ProviderUsage) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 7) {
+        VStack(alignment: .leading, spacing: LayoutSpacing.tight) {
+            HStack(spacing: LayoutSpacing.tight) {
                 ProviderLogo(provider: usage.provider, size: 21)
                 Text(usage.provider.displayName)
                     .font(.system(size: 15, weight: .bold))
@@ -199,40 +207,51 @@ struct UsageWidgetView: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: LayoutSpacing.tight) {
                 ForEach(mainWindows(usage), id: \.label) { column in
                     mediumWindow(column.label, column.window, usage.provider.accent)
                 }
             }
 
+            if showWeekly, let scoped = usage.modelScoped {
+                mediumScoped(scoped, usage: usage)
+            }
+
             Spacer(minLength: 0)
 
-            HStack(spacing: 6) {
-                if showWeekly, let scoped = usage.modelScoped {
-                    Text(usage.modelScopedName ?? "Model")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Text(percentText(scoped, compact: prefs.compactNumbers))
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(usage.provider.accent)
-                }
-
-                Spacer(minLength: 0)
-
-                if prefs.showResetTime, let parts = ResetLabel.parts(for: nextReset(usage)) {
+            if prefs.showResetTime, let parts = ResetLabel.parts(for: nextReset(usage)) {
+                HStack(spacing: LayoutSpacing.micro) {
                     Image(systemName: "clock")
                         .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Text(parts.value)
+                    Text("\(parts.caption) \(parts.value)")
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
         }
+    }
+
+    private func mediumScoped(_ window: UsageWindow, usage: ProviderUsage) -> some View {
+        VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
+            HStack(alignment: .firstTextBaseline, spacing: LayoutSpacing.micro) {
+                Text(usage.modelScopedName ?? "Model")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: LayoutSpacing.micro)
+                Text(percentText(window, compact: prefs.compactNumbers))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(usageValueTint(for: window))
+            }
+            SegmentedBar(remaining: window.remainingPercent,
+                         tint: usageTint(for: window, accent: usage.provider.accent),
+                         segments: 5)
+                .frame(height: 5)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func mediumWindow(_ title: String, _ window: UsageWindow?, _ tint: Color) -> some View {
@@ -245,9 +264,9 @@ struct UsageWidgetView: View {
                 .monospacedDigit()
                 .minimumScaleFactor(0.65)
                 .lineLimit(1)
-                .foregroundStyle(tint)
+                .foregroundStyle(usageValueTint(for: window))
             SegmentedBar(remaining: window?.remainingPercent ?? 0,
-                         tint: tint, segments: 5)
+                         tint: usageTint(for: window, accent: tint), segments: 5)
                 .frame(height: 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -258,12 +277,12 @@ struct UsageWidgetView: View {
     /// Providers stack vertically in the square family. Each section gets the
     /// same height while Session and Weekly remain easy to compare side by side.
     private var large: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: LayoutSpacing.tight) {
             ForEach(visibleProviders, id: \.provider) { usage in
                 largeSection(usage)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .padding(.horizontal, LayoutSpacing.standard)
+                    .padding(.vertical, LayoutSpacing.compact)
                     .background(usage.provider.accent.opacity(0.075),
                                 in: ContainerRelativeShape())
             }
@@ -271,7 +290,7 @@ struct UsageWidgetView: View {
     }
 
     private func largeSection(_ usage: ProviderUsage) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: LayoutSpacing.tight) {
             HStack(alignment: .center, spacing: 8) {
                 ProviderLogo(provider: usage.provider, size: 22)
                 Text(usage.provider.displayName)
@@ -288,24 +307,24 @@ struct UsageWidgetView: View {
                         Text(parts.value)
                             .font(.system(size: 9, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(usage.provider.accent)
                     }
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 }
             }
 
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: LayoutSpacing.compact) {
                 ForEach(mainWindows(usage), id: \.label) { column in
                     largeWindow(column.label, column.window, usage.provider.accent)
                 }
             }
 
-            Spacer(minLength: 0)
-
+            // Above the flexible spacer, not below it: a model limit can be the
+            // binding constraint, and pinning it to the bottom edge made the
+            // tightest number the least visible one in the section.
             if showWeekly, let scoped = usage.modelScoped {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                VStack(alignment: .leading, spacing: LayoutSpacing.micro) {
+                    HStack(alignment: .firstTextBaseline, spacing: LayoutSpacing.micro) {
                         Text(usage.modelScopedName ?? "Model")
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(.secondary)
@@ -313,14 +332,16 @@ struct UsageWidgetView: View {
                         Text(percentText(scoped, compact: prefs.compactNumbers))
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(usage.provider.accent)
+                            .foregroundStyle(usageValueTint(for: scoped))
                         Spacer(minLength: 0)
                     }
                     SegmentedBar(remaining: scoped.remainingPercent,
-                                 tint: usage.provider.accent, segments: 7)
+                                 tint: usageTint(for: scoped, accent: usage.provider.accent), segments: 7)
                         .frame(height: 7)
                 }
             }
+
+            Spacer(minLength: 0)
         }
     }
 
@@ -335,8 +356,9 @@ struct UsageWidgetView: View {
                 .monospacedDigit()
                 .minimumScaleFactor(0.65)
                 .lineLimit(1)
-                .foregroundStyle(tint)
-            SegmentedBar(remaining: window?.remainingPercent ?? 0, tint: tint, segments: 7)
+                .foregroundStyle(usageValueTint(for: window))
+            SegmentedBar(remaining: window?.remainingPercent ?? 0,
+                         tint: usageTint(for: window, accent: tint), segments: 7)
                 .frame(height: 7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -349,8 +371,8 @@ struct UsageWidgetView: View {
     /// out with `maxWidth: .infinity` — give it the whole column.
     private func mainWindows(_ usage: ProviderUsage) -> [(label: String, window: UsageWindow?)] {
         showWeekly
-            ? [("Session", usage.session), ("Weekly", usage.weekly)]
-            : [("Session", usage.session)]
+            ? [("5-hour", usage.session), ("Weekly", usage.weekly)]
+            : [("5-hour", usage.session)]
     }
 
     /// Every window currently in play. Switching the weekly window off means
@@ -358,11 +380,21 @@ struct UsageWidgetView: View {
     /// figures too — otherwise the small widget and the reset line would keep
     /// quoting a number the setting just hid.
     private func activeWindows(_ usage: ProviderUsage) -> [UsageWindow] {
-        (showWeekly ? [usage.session, usage.weekly] : [usage.session]).compactMap { $0 }
+        allVisibleWindows(usage).map(\.window)
     }
 
-    private func tightest(_ usage: ProviderUsage) -> UsageWindow? {
-        activeWindows(usage).min { $0.remainingPercent < $1.remainingPercent }
+    private func tightest(_ usage: ProviderUsage) -> (label: String, window: UsageWindow)? {
+        allVisibleWindows(usage)
+            .min { $0.window.remainingPercent < $1.window.remainingPercent }
+    }
+
+    private func allVisibleWindows(_ usage: ProviderUsage) -> [(label: String, window: UsageWindow)] {
+        var windows = mainWindows(usage)
+            .compactMap { item in item.window.map { (item.label, $0) } }
+        if showWeekly, let scoped = usage.modelScoped {
+            windows.append((usage.modelScopedName ?? "Model", scoped))
+        }
+        return windows
     }
 
     /// Whichever window in play rolls over soonest.

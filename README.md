@@ -56,26 +56,28 @@ gallery serves both.
 ## The app
 
 The menu bar item shows your tightest remaining percentage. Clicking it opens a
-**menu**, not a panel:
+compact usage panel:
 
-- **Open Dashboard** (⌘D) — the full window: both providers, session and weekly,
-  segmented bars and ring gauges, plus which allowance resets next.
+Both providers' 5-hour figures sit at the top, a refresh button (⌘R) sits in its
+header, and three actions sit below:
+
+- **Open Dashboard** (⌘D) — the full window: both providers, 5-hour and weekly
+  allowances, model-specific limits, segmented bars, and the next reset.
 - **Settings…** (⌘,)
-- **Refresh Now**
 - **Quit VibeWidget** (⌘Q)
 
 ### Settings
 
 | Pane | What it does |
 |------|--------------|
-| **General** | Automatic refresh + interval, menu bar visibility and what it displays, the two widget display options, open at login |
+| **General** | Automatic refresh + interval, menu bar or Dock visibility and what it displays, the three widget display options, open at login |
 | **Accounts** | Read-only: plan, last-refresh status, and where each number comes from |
 | **Notifications** | Warn once a window drops below a threshold |
 | **Appearance** | Light, Dark, or Auto — applies to both app and widgets |
 | **Advanced** | Reveal the shared snapshot, force a widget reload, clear the cache |
 
 Preferences live in the App Group's `UserDefaults`, not the app's own, so
-**Use compact numbers** and **Show reset time** reach the widget too.
+**Hide percent symbols**, **Show reset time**, and **Show weekly usage** reach the widget too.
 
 Signing in and out is not here — that belongs to the Claude Code and Codex CLIs.
 VibeWidget only reads what they leave on disk.
@@ -266,11 +268,11 @@ Shared/      compiled into both targets
   ClaudeUsageProvider.swift  security(1) → OAuth usage endpoint
   CodexUsageProvider.swift   tail of the newest rollout log
   UsageStore.swift           refresh + App Group cache
-  UsageViews.swift           UsageBar, ProviderCard
+  UsageViews.swift           provider logos, semantic colors, segmented bars
   AppSettings.swift          preferences, in the App Group suite
 App/         menu bar app — owns refreshing
   VibeWidgetApp.swift        menu, window scenes, refresh timer, alerts
-  DashboardView.swift        RingGauge, SegmentedBar, provider cards
+  DashboardView.swift        responsive allowance cards, status, next reset
   SettingsView.swift         sidebar panes, login item
 Widget/      WidgetKit extension — read-only
 Tools/

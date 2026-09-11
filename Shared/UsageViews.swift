@@ -1,5 +1,17 @@
 import SwiftUI
 
+/// Shared 4-point spacing scale. Components use the smallest value that makes
+/// their semantic relationship clear instead of accumulating near-duplicates.
+enum LayoutSpacing {
+    static let micro: CGFloat = 4
+    static let tight: CGFloat = 8
+    static let compact: CGFloat = 12
+    static let standard: CGFloat = 16
+    static let section: CGFloat = 20
+    static let page: CGFloat = 24
+    static let region: CGFloat = 32
+}
+
 extension ProviderUsage.Provider {
     /// Official provider brand colours used throughout the app and widget.
     var accent: Color {
@@ -50,38 +62,33 @@ struct ProviderLogo: View {
             }
         }
         .frame(width: size, height: size)
+        // Provider names always sit beside the mark. Keeping the decorative
+        // image out of the accessibility tree avoids announcing it twice.
+        .accessibilityHidden(true)
     }
 }
 
-// MARK: - Gauges
-//
-// Shared with the widget target, so both draw the same shapes.
+/// Bar tint. Provider colors identify the service; semantic colors take over
+/// only when the remaining allowance itself needs attention.
+func usageTint(for window: UsageWindow?, accent: Color) -> Color {
+    guard let remaining = window?.remainingPercent else { return .secondary }
+    if remaining <= 10 { return .red }
+    if remaining <= 20 { return .orange }
+    return accent
+}
 
-/// The dashed ring around each percentage. Ticks rather than a solid arc so a
-/// glance reads roughly how full it is without reading the number.
-struct RingGauge: View {
-    let remaining: Double
-    let tint: Color
-    var diameter: CGFloat = 74
-
-    private let tickCount = 36
-
-    var body: some View {
-        ZStack {
-            ForEach(0..<tickCount, id: \.self) { index in
-                let threshold = Double(index) / Double(tickCount) * 100
-                Capsule()
-                    .fill(threshold < remaining ? tint : Color.primary.opacity(0.12))
-                    .frame(width: 2.5, height: 8)
-                    .offset(y: -diameter / 2 + 4)
-                    .rotationEffect(.degrees(Double(index) / Double(tickCount) * 360))
-            }
-            Text("\(Int(remaining.rounded()))%")
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-        }
-        .frame(width: diameter, height: diameter)
-    }
+/// Figure tint.
+///
+/// Claude's brand accent *is* orange, so tinting a healthy Claude percentage
+/// with it makes 97% look exactly as alarming as the amber warning beside it.
+/// The number therefore stays neutral until the allowance genuinely needs
+/// attention, and a coloured figure always means the same thing on both
+/// providers. Brand identity still rides on the logo and the bar.
+func usageValueTint(for window: UsageWindow?) -> Color {
+    guard let remaining = window?.remainingPercent else { return .secondary }
+    if remaining <= 10 { return .red }
+    if remaining <= 20 { return .orange }
+    return .primary
 }
 
 /// Chunked progress bar. Discrete blocks make small differences visible in a
@@ -107,8 +114,10 @@ struct SegmentedBar: View {
                         }
                     }
                 }
-                .frame(height: 9)
             }
         }
+        // Every use has an adjacent textual percentage. The bar is a redundant
+        // visual encoding, not an additional VoiceOver stop.
+        .accessibilityHidden(true)
     }
 }
