@@ -28,6 +28,7 @@ enum ClaudeUsageProvider {
         /// problem, and one running `claude` will not fix.
         case unauthorized
         case httpStatus(Int)
+        case rateLimited
 
         var errorDescription: String? {
             switch self {
@@ -41,6 +42,8 @@ enum ClaudeUsageProvider {
                 return "Token expired — run claude once to renew it"
             case .unauthorized:
                 return "Anthropic rejected the token (401)"
+            case .rateLimited:
+                return "Rate limited — showing last reading"
             case .httpStatus(let code):
                 return "Anthropic API error (\(code))"
             }
@@ -201,7 +204,14 @@ enum ClaudeUsageProvider {
             let (data, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard code == 200 else {
-                throw code == 401 ? ProviderError.unauthorized : ProviderError.httpStatus(code)
+                switch code {
+                case 401: throw ProviderError.unauthorized
+                // Reachable now that the refresh interval goes down to 30s.
+                // UsageStore keeps the last good reading behind the error, so
+                // being throttled costs the numbers nothing.
+                case 429: throw ProviderError.rateLimited
+                default: throw ProviderError.httpStatus(code)
+                }
             }
 
             let decoded = try JSONDecoder().decode(UsageResponse.self, from: data)

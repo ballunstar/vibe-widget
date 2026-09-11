@@ -147,40 +147,6 @@ final class UsageViewModel: ObservableObject {
     }
 }
 
-/// The menu itself lives in a View, not in the App struct, because
-/// `openWindow` is a *view* environment value — reading it from `App` yields a
-/// non-functional action.
-struct MenuBarMenu: View {
-    @ObservedObject var model: UsageViewModel
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("Open Dashboard") { open(VibeWidgetApp.dashboardWindowID) }
-            .keyboardShortcut("d")
-        Button("Settings…") { open(VibeWidgetApp.settingsWindowID) }
-            .keyboardShortcut(",")
-
-        Divider()
-
-        Button(model.isRefreshing ? "Refreshing…" : "Refresh Now") {
-            Task { await model.refresh() }
-        }
-        .disabled(model.isRefreshing)
-
-        Divider()
-
-        Button("Quit VibeWidget") { NSApplication.shared.terminate(nil) }
-            .keyboardShortcut("q")
-    }
-
-    /// A menu bar app is not frontmost when its menu is clicked, so the window
-    /// would otherwise open behind whatever the user was looking at.
-    private func open(_ id: String) {
-        openWindow(id: id)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-}
-
 /// Applies the stored appearance at launch. AppKit needs this set on
 /// NSApplication — a SwiftUI `.preferredColorScheme` on the scenes does not
 /// reach window chrome such as the title bar.
@@ -287,11 +253,14 @@ struct VibeWidgetApp: App {
     var body: some Scene {
         // Clicking the menu bar item opens a menu; the numbers live in the
         // dashboard window rather than in a popover.
+        // .window rather than .menu: a standard menu cannot draw the logos and
+        // progress bars this panel is built from.
         MenuBarExtra(isInserted: $showInMenuBar) {
-            MenuBarMenu(model: model)
+            MenuBarPanel(model: model)
         } label: {
             MenuBarLabel(icon: menuBarIcon, title: menuBarTitle)
         }
+        .menuBarExtraStyle(.window)
 
         Window("VibeWidget", id: Self.dashboardWindowID) {
             DashboardView(model: model)

@@ -20,7 +20,7 @@ enum MenuBarGauge {
     /// - Parameters:
     ///   - claude: percent remaining, or nil when there is no reading yet.
     ///   - chatgpt: percent remaining, or nil when there is no reading yet.
-    static func image(claude: Double?, chatgpt: Double?) -> NSImage {
+    static func image(claude: Double?, chatgpt: Double?, side: CGFloat = Self.side) -> NSImage {
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
 
