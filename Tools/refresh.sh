@@ -41,9 +41,20 @@ DEST="$DEST_DIR/VibeWidget.app"
 [ -d "$SOURCE" ] || { echo "no app bundle at $SOURCE" >&2; exit 1; }
 
 echo "==> stopping the running app"
-# Copying over a running bundle leaves a mix of old and new Mach-O files.
+# Copying over a running bundle leaves a mix of old and new Mach-O files, so
+# wait for the process to actually go rather than guessing at how long that
+# takes — an app that is busy, or holding a dialog open, takes longer than any
+# fixed sleep would allow for.
 pkill -x VibeWidget 2>/dev/null || true
-sleep 1
+for _ in $(seq 1 25); do
+  pgrep -x VibeWidget >/dev/null 2>&1 || break
+  sleep 0.2
+done
+if pgrep -x VibeWidget >/dev/null 2>&1; then
+  echo "    still running after 5s, forcing it"
+  pkill -9 -x VibeWidget 2>/dev/null || true
+  sleep 1
+fi
 
 SOURCE_VERSION="$(plutil -extract CFBundleShortVersionString raw -o - \
   "$SOURCE/Contents/Info.plist" 2>/dev/null || echo "?")"
